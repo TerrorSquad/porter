@@ -1,10 +1,10 @@
 .PHONY: build clean help
 
 build:
-	go build -o porter .
+	go build -o porter . && cp porter ~/.local/bin/porter
 
 clean:
-	rm -f porter
+	rm -f porter && rm -f ~/.local/bin/porter
 
 help:
 	@echo "Available targets:"
