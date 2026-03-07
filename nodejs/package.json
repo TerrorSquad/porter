@@ -1,0 +1,27 @@
+{
+  "name": "utils",
+  "version": "1.0.0",
+  "description": "Collection of JS/TS utilities",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "porter": "tsx src/porter.ts",
+    "build": "esbuild src/porter.ts --bundle --platform=node --format=esm --outfile=dist/porter.mjs --minify && chmod +x dist/porter.mjs && cp dist/porter.mjs ~/.local/bin/porter",
+    "build:external": "esbuild src/porter.ts --bundle --platform=node --format=esm --outfile=dist/porter.mjs --minify --external:qrcode-terminal && chmod +x dist/porter.mjs",
+    "test": "tsx src/lib/chunker.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.30.1",
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/qrcode-terminal": "^0.12.2",
+    "esbuild": "^0.20.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3"
+  }
+}
