@@ -54,7 +54,7 @@ pnpm install
 
 # Build
 pnpm run build
-# → Outputs dist/porter.mjs (~25 KB)
+# → Outputs dist/porter.mjs
 
 # Test
 ./dist/porter.mjs --help
@@ -116,7 +116,7 @@ nodejs/
 | Component | Purpose |
 |-----------|---------|
 | **TypeScript** | Type-safe source code |
-| **esbuild** | Fast bundling & minification |
+| **Rollup** | Single-file bundling for distributable CLI builds |
 | **qrcode-terminal** | Terminal QR code rendering |
 | **Node.js Crypto** | MD5 checksums |
 | **Zlib** | Gzip compression |
@@ -125,7 +125,7 @@ nodejs/
 
 | Metric | Value |
 |--------|-------|
-| Bundle size | ~25 KB (minified) |
+| Bundle size | Single-file bundled CLI |
 | Dependencies | ~2 MB (node_modules) |
 | Startup time | <50ms |
 | Memory usage | ~30 MB |
@@ -185,6 +185,8 @@ pnpm install
 rm -rf dist/
 pnpm run build
 ```
+
+If you need an externalized bundle for environments that already provide `qrcode-terminal`, run `pnpm run build:external`.
 
 ## 🤝 Contributing
 

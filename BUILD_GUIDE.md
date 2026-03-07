@@ -57,11 +57,11 @@ npm install  # or pnpm install
 npm run build
 ```
 
-This runs esbuild to:
+This runs Rollup to:
 1. Bundle `src/porter.ts` → `dist/porter.mjs`
-2. Minify the code
+2. Emit a compact single-file CLI bundle
 3. Bundle all dependencies (qrcode-terminal) for portability
-4. Output: **~20 KB self-contained executable**
+4. Output: self-contained executable
 
 ### Verify Build
 ```bash

@@ -125,7 +125,7 @@ All you need is the chunk format: `index|total|mode|payload`
 
 | Component | Purpose |
 |-----------|---------|
-| **esbuild** | Bundle TypeScript → minified JS |
+| **Rollup** | Bundle TypeScript → single-file JS |
 | **qrcode-terminal** | Terminal QR rendering |
 | **Node.js Crypto** | MD5 checksums |
 | **Zlib** | Server-side gzip |

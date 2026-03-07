@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "porter": "tsx src/porter.ts",
-    "build": "esbuild src/porter.ts --bundle --platform=node --format=esm --outfile=dist/porter.mjs --minify && chmod +x dist/porter.mjs && cp dist/porter.mjs ~/.local/bin/porter",
-    "build:external": "esbuild src/porter.ts --bundle --platform=node --format=esm --outfile=dist/porter.mjs --minify --external:qrcode-terminal && chmod +x dist/porter.mjs",
+    "build:bundle": "rollup -c",
+    "build": "pnpm run build:bundle && chmod +x dist/porter.mjs && cp dist/porter.mjs ~/.local/bin/porter",
+    "build:external": "EXTERNAL_DEPS=qrcode-terminal pnpm run build:bundle && chmod +x dist/porter.mjs",
     "test": "tsx src/lib/chunker.test.ts"
   },
   "keywords": [],
@@ -18,9 +19,13 @@
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.9",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
     "@types/node": "^20.11.24",
     "@types/qrcode-terminal": "^0.12.2",
-    "esbuild": "^0.20.2",
+    "rollup": "^4.59.0",
+    "tslib": "^2.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.3.3"
   }
