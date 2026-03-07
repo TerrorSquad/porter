@@ -89,11 +89,18 @@ curl -F file=@photo.jpg http://192.168.1.10:8080/upload
 The receiver accepts `POST /upload` requests, saves files into the output directory, and prints reachable LAN URLs on startup.
 If the uploaded bytes match an existing file in the output directory, Porter skips the duplicate and returns the existing path instead of saving a second copy.
 For JSON uploads like the scanned QR payloads you just sent, deduplication is based on the meaningful payload and ignores the `timestamp` field.
-QR scan JSON uploads are unpacked into joinable files like `iz.partaa`, `iz.partab`, and `iz.sha256` instead of storing the JSON wrapper body.
+QR scan JSON uploads are unpacked into per-transfer directories like `received/iz/iz.partaa`, `received/iz/iz.partab`, and `received/iz/iz.sha256` instead of storing the JSON wrapper body.
+Each transfer directory also gets an `iz.meta.json` manifest with the expected part count, received part files, missing parts, joined output, and checksum verification status.
+Once all parts arrive, Porter automatically writes `received/iz/iz.joined`.
 
 To reassemble a transfer later:
 ```bash
-cat iz.part* > restored-file
+./porter join iz --dir=received --output=restored-file
+```
+
+You can still inspect or concatenate parts manually if needed:
+```bash
+cat received/iz/iz.part* > restored-file
 ```
 
 ### Keyboard Controls

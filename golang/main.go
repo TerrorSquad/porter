@@ -26,6 +26,11 @@ func main() {
 		runReceiver(flags, files)
 		return
 	}
+	if len(args) > 0 && args[0] == "join" {
+		flags, files := parseArgs(args[1:])
+		runJoin(flags, files)
+		return
+	}
 
 	flags, files := parseArgs(args)
 	runSender(flags, files)
@@ -363,6 +368,7 @@ func showUsage() {
 	fmt.Println("  porter <file.part*.txt|file.partaa|...> [options]")
 	fmt.Println("  echo 'data' | porter [options]")
 	fmt.Println("  porter serve [options]")
+	fmt.Println("  porter join <transfer-id|part-file|manifest> [options]")
 	fmt.Println("\nOptions:")
 	fmt.Println("  --slideshow       Start in slideshow mode")
 	fmt.Println("  --base64          Enable Base64 encoding (for binary files)")
@@ -382,6 +388,10 @@ func showUsage() {
 	fmt.Println("  --host=0.0.0.0         Listen address for HTTP uploads")
 	fmt.Println("  --port=8080            Listen port for HTTP uploads")
 	fmt.Println("  --output-dir=received  Directory to save uploaded files")
+	fmt.Println("\nJoin Mode:")
+	fmt.Println("  --dir=received         Directory containing .part files and manifests")
+	fmt.Println("  --output=restored.bin  Joined output path (default: <id>.joined)")
+	fmt.Println("  --force                Overwrite an existing output file")
 }
 
 func showCountdown(renderer *Renderer, fileName string, sm *StateManager) {

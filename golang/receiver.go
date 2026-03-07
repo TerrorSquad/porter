@@ -18,10 +18,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode/utf8"
 )
+
+var transferLocks sync.Map
 
 type uploadResult struct {
 	FileName     string `json:"fileName"`
@@ -30,6 +33,11 @@ type uploadResult struct {
 	Duplicate    bool   `json:"duplicate"`
 	ExistingPath string `json:"existingPath,omitempty"`
 	SHA256       string `json:"sha256,omitempty"`
+	TransferID   string `json:"transferId,omitempty"`
+	ManifestPath string `json:"manifestPath,omitempty"`
+	Complete     bool   `json:"complete,omitempty"`
+	Verified     bool   `json:"verified,omitempty"`
+	JoinedPath   string `json:"joinedPath,omitempty"`
 }
 
 type qrScanUpload struct {
@@ -96,7 +104,8 @@ func runReceiver(flags map[string]string, files []string) {
 		fmt.Fprintf(w, "Porter receiver is running.\n\nPOST raw bytes to /upload?filename=name.bin\n")
 		fmt.Fprintf(w, "Or send multipart/form-data with a file field to /upload\n\n")
 		fmt.Fprintf(w, "Duplicate uploads are skipped automatically based on file content.\n")
-		fmt.Fprintf(w, "QR scan JSON uploads are unpacked into joinable files like <id>.partaa, <id>.partab, ...\n")
+		fmt.Fprintf(w, "QR scan JSON uploads are unpacked into transfer directories like <id>/<id>.partaa and <id>/<id>.meta.json.\n")
+		fmt.Fprintf(w, "When a transfer is complete, Porter auto-joins it and writes <id>/<id>.joined.\n")
 		fmt.Fprintf(w, "Saving uploads to: %s\n", absOutputDir)
 	})
 	mux.HandleFunc("/upload", makeUploadHandler(absOutputDir))
@@ -424,8 +433,16 @@ func decodeChunkPayload(mode string, encoded []byte) ([]byte, error) {
 }
 
 func writeChunkUpload(outputDir string, chunk qrChunkUpload) (uploadResult, error) {
+	transferLock := lockTransfer(chunk.ID)
+	defer transferLock.Unlock()
+
+	transferDir, err := ensureTransferDir(outputDir, chunk.ID)
+	if err != nil {
+		return uploadResult{}, err
+	}
+
 	fileName := chunkFileName(chunk)
-	fullPath := filepath.Join(outputDir, fileName)
+	fullPath := filepath.Join(transferDir, fileName)
 
 	content, err := chunkFileContent(chunk)
 	if err != nil {
@@ -437,6 +454,11 @@ func writeChunkUpload(outputDir string, chunk qrChunkUpload) (uploadResult, erro
 
 	if existing, err := os.ReadFile(fullPath); err == nil {
 		if bytes.Equal(existing, content) {
+			manifest, manifestPath, joinedPath, manifestErr := updateTransferManifest(outputDir, chunk)
+			if manifestErr != nil {
+				return uploadResult{}, manifestErr
+			}
+
 			fmt.Printf("Skipped duplicate chunk %s\n", fullPath)
 			return uploadResult{
 				FileName:     fileName,
@@ -445,6 +467,11 @@ func writeChunkUpload(outputDir string, chunk qrChunkUpload) (uploadResult, erro
 				Duplicate:    true,
 				ExistingPath: fullPath,
 				SHA256:       checksumText,
+				TransferID:   manifest.ID,
+				ManifestPath: manifestPath,
+				Complete:     manifest.Complete,
+				Verified:     manifest.ChecksumVerified,
+				JoinedPath:   joinedPath,
 			}, nil
 		}
 		return uploadResult{}, fmt.Errorf("conflicting content already exists at %s", fullPath)
@@ -456,13 +483,39 @@ func writeChunkUpload(outputDir string, chunk qrChunkUpload) (uploadResult, erro
 		return uploadResult{}, fmt.Errorf("writing chunk payload file: %w", err)
 	}
 
+	manifest, manifestPath, joinedPath, err := updateTransferManifest(outputDir, chunk)
+	if err != nil {
+		return uploadResult{}, err
+	}
+
 	fmt.Printf("Saved chunk payload %s (%d bytes, sha256=%s)\n", fullPath, len(content), checksumText)
 	return uploadResult{
 		FileName: fileName,
 		Path:     fullPath,
 		Size:     int64(len(content)),
 		SHA256:   checksumText,
+		TransferID:   manifest.ID,
+		ManifestPath: manifestPath,
+		Complete:     manifest.Complete,
+		Verified:     manifest.ChecksumVerified,
+		JoinedPath:   joinedPath,
 	}, nil
+}
+
+func lockTransfer(chunkID string) *sync.Mutex {
+	key := chunkFileBase(chunkID)
+	lock, _ := transferLocks.LoadOrStore(key, &sync.Mutex{})
+	mutex := lock.(*sync.Mutex)
+	mutex.Lock()
+	return mutex
+}
+
+func ensureTransferDir(outputDir string, chunkID string) (string, error) {
+	transferDir := transferDirectory(outputDir, chunkID)
+	if err := os.MkdirAll(transferDir, 0755); err != nil {
+		return "", fmt.Errorf("creating transfer directory: %w", err)
+	}
+	return transferDir, nil
 }
 
 func chunkFileName(chunk qrChunkUpload) string {
