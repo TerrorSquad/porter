@@ -166,6 +166,9 @@ cd nodejs
 ```bash
 cd golang
 ./porter myfile.txt
+
+# Receive files over HTTP from another device on your LAN
+./porter serve --port=8080 --output-dir=received
 ```
 
 **For detailed commands and options:**

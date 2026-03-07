@@ -16,3 +16,4 @@ nodejs/test_data/
 
 # Go workspace
 golang/porter
+golang/received/

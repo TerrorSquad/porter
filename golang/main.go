@@ -21,8 +21,17 @@ import (
 
 func main() {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "serve" {
+		flags, files := parseArgs(args[1:])
+		runReceiver(flags, files)
+		return
+	}
 
-	// Parse flags
+	flags, files := parseArgs(args)
+	runSender(flags, files)
+}
+
+func parseArgs(args []string) (map[string]string, []string) {
 	flags := make(map[string]string)
 	files := make([]string, 0)
 
@@ -39,7 +48,7 @@ func main() {
 		}
 	}
 
-	runSender(flags, files)
+	return flags, files
 }
 
 func runSender(flags map[string]string, files []string) {
@@ -353,6 +362,7 @@ func showUsage() {
 	fmt.Println("  porter <file> [options]")
 	fmt.Println("  porter <file.part*.txt|file.partaa|...> [options]")
 	fmt.Println("  echo 'data' | porter [options]")
+	fmt.Println("  porter serve [options]")
 	fmt.Println("\nOptions:")
 	fmt.Println("  --slideshow       Start in slideshow mode")
 	fmt.Println("  --base64          Enable Base64 encoding (for binary files)")
@@ -368,6 +378,10 @@ func showUsage() {
 	fmt.Println("                    0.2 = 5 chunks/sec (bright light + steady)")
 	fmt.Println("                    0.1 = 10 chunks/sec (optimal conditions)")
 	fmt.Println("  --buffer=10       Vertical buffer lines")
+	fmt.Println("\nServe Mode:")
+	fmt.Println("  --host=0.0.0.0         Listen address for HTTP uploads")
+	fmt.Println("  --port=8080            Listen port for HTTP uploads")
+	fmt.Println("  --output-dir=received  Directory to save uploaded files")
 }
 
 func showCountdown(renderer *Renderer, fileName string, sm *StateManager) {

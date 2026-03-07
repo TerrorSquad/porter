@@ -64,12 +64,29 @@ golang/
 # Send a file (auto-starts slideshow)
 ./porter myfile.pdf
 
+# Start a local HTTP receiver
+./porter serve --port=8080 --output-dir=received
+
 # Manual mode (requires keyboard control)
 ./porter file.txt
 # L/H: Navigate chunks
 # S: Start slideshow
 # Q: Quit
 ```
+
+### Receive Files Over HTTP
+```bash
+# Start the receiver on all interfaces
+./porter serve --port=8080 --output-dir=received
+
+# Send raw file bytes from another device on the same network
+curl --data-binary @notes.txt "http://192.168.1.10:8080/upload?filename=notes.txt"
+
+# Or send multipart form data
+curl -F file=@photo.jpg http://192.168.1.10:8080/upload
+```
+
+The receiver accepts `POST /upload` requests, saves files into the output directory, and prints reachable LAN URLs on startup.
 
 ### Keyboard Controls
 - **L** / **→**: Next chunk
@@ -101,6 +118,7 @@ golang/
 - **Native binary**: No runtime dependencies
 - **Fast startup**: <10ms cold start
 - **Low memory**: ~5 MB RAM usage
+- **Local HTTP receiver**: Accept uploads from other devices on the same network
 - **Terminal resize**: Dynamic reflow on SIGWINCH
 - **UTF-8 aware**: Proper visual width calculation
 - **Progress tracking**: Resume from checkpoint
