@@ -16,11 +16,12 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 - **Debouncing** — ignore duplicate scans within 300ms
 
 ### 2. **Data Parsing & Assembly**
-- **Parse header format**: `index|total|mode|payload`
+- **Parse header format**: `index|total|mode|id|payload`
   - `index`: Chunk number (0-based)
   - `total`: Total chunks
   - `mode`: `T` (Text), `B` (Binary/Base64), `C` (Compressed)
-  - `payload`: Actual data (may contain `|` characters)
+   - `id`: Two-character transfer identifier for grouping repeated scans without using the full filename
+   - `payload`: Actual data (may contain `|` characters)
 
 - **Chunk storage** — Store received chunks in a map by index
 - **Progress tracking** — Display `current / total` chunks
@@ -230,4 +231,4 @@ Result: Decompressed → saved file
 ## 📦 Related Components
 
 - **Sender CLI** (`/php/utils`): `pnpm porter <file> --slideshow`
-- **QR Format**: Defined in `src/lib/chunker.ts` (header protocol: `index|total|mode|payload`)
+- **QR Format**: Defined in `src/lib/chunker.ts` (header protocol: `index|total|mode|id|payload`)

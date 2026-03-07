@@ -87,6 +87,14 @@ curl -F file=@photo.jpg http://192.168.1.10:8080/upload
 ```
 
 The receiver accepts `POST /upload` requests, saves files into the output directory, and prints reachable LAN URLs on startup.
+If the uploaded bytes match an existing file in the output directory, Porter skips the duplicate and returns the existing path instead of saving a second copy.
+For JSON uploads like the scanned QR payloads you just sent, deduplication is based on the meaningful payload and ignores the `timestamp` field.
+QR scan JSON uploads are unpacked into joinable files like `iz.partaa`, `iz.partab`, and `iz.sha256` instead of storing the JSON wrapper body.
+
+To reassemble a transfer later:
+```bash
+cat iz.part* > restored-file
+```
 
 ### Keyboard Controls
 - **L** / **→**: Next chunk
@@ -119,6 +127,7 @@ The receiver accepts `POST /upload` requests, saves files into the output direct
 - **Fast startup**: <10ms cold start
 - **Low memory**: ~5 MB RAM usage
 - **Local HTTP receiver**: Accept uploads from other devices on the same network
+- **Content deduplication**: Skips uploads whose bytes already exist in the output directory
 - **Terminal resize**: Dynamic reflow on SIGWINCH
 - **UTF-8 aware**: Proper visual width calculation
 - **Progress tracking**: Resume from checkpoint

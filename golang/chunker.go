@@ -7,6 +7,8 @@ import (
 	"math"
 )
 
+const chunkIDAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_"
+
 type ChunkOptions struct {
 	Buffer       int
 	UseBase64    bool
@@ -21,6 +23,7 @@ type Chunker struct {
 	Chunks    []string
 	Version   int
 	ChunkSize int
+	ChunkID   string
 	Checksum  string
 	content   []byte
 }
@@ -28,13 +31,23 @@ type Chunker struct {
 func NewChunker(content []byte) *Chunker {
 	hash := sha256.Sum256(content)
 	checksum := fmt.Sprintf("%x", hash)
+	chunkID := makeChunkID(hash[0], hash[1])
 
 	return &Chunker{
 		Chunks:   []string{},
 		Version:  1,
+		ChunkID:  chunkID,
 		content:  content,
 		Checksum: checksum,
 	}
+}
+
+func makeChunkID(high byte, low byte) string {
+	value := int(high)<<8 | int(low)
+	return string([]byte{
+		chunkIDAlphabet[(value>>6)&0x3f],
+		chunkIDAlphabet[value&0x3f],
+	})
 }
 
 var capacityTable = map[string]map[int]int{
@@ -82,7 +95,7 @@ func (c *Chunker) CalculateLayout(rows int, options ChunkOptions) {
 
 	headerSize := 0
 	if options.AddHeader {
-		headerSize = 12
+		headerSize = 16
 	}
 
 	workingCapacity := charCapacity - headerSize
@@ -123,36 +136,17 @@ func (c *Chunker) CalculateLayout(rows int, options ChunkOptions) {
 				modeChar = "B"
 			}
 
-			partNum := 1
-			if options.CurrentPart != nil {
-				partNum = *options.CurrentPart
-			}
-			partTotal := 1
-			if options.TotalParts != nil {
-				partTotal = *options.TotalParts
-			}
-
-			payload = fmt.Sprintf("%d|%d|%d|%d|%s|%s",
+			payload = fmt.Sprintf("%d|%d|%s|%s|%s",
 				currentChunkIndex, tempChunksCount,
-				partNum, partTotal,
-				modeChar, payload)
+				modeChar, c.ChunkID, payload)
 		}
 
 		c.Chunks = append(c.Chunks, payload)
 	}
 
 	if options.AddChecksum {
-		partNum := 1
-		if options.CurrentPart != nil {
-			partNum = *options.CurrentPart
-		}
-		partTotal := 1
-		if options.TotalParts != nil {
-			partTotal = *options.TotalParts
-		}
-
-		checksumChunk := fmt.Sprintf("CHECKSUM|%d|%d|T|%s",
-			partNum, partTotal, c.Checksum)
+		checksumChunk := fmt.Sprintf("CHECKSUM|T|%s|%s",
+			c.ChunkID, c.Checksum)
 		c.Chunks = append(c.Chunks, checksumChunk)
 	}
 }

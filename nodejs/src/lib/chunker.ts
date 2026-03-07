@@ -2,6 +2,8 @@
 import crypto from 'crypto';
 import { getMaxCapacity } from './constants';
 
+const CHUNK_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+
 export interface ChunkOptions {
   buffer: number;
   useBase64: boolean;
@@ -16,13 +18,16 @@ export class Chunker {
   public chunks: string[] = [];
   public version: number = 1;
   public chunkSize: number = 500;
+  public chunkId: string = '';
   public checksum: string = ''; // SHA256 of content
 
   private content: Buffer;
 
   constructor(content: Buffer) {
     this.content = content;
-    this.checksum = crypto.createHash('sha256').update(content).digest('hex');
+    const digest = crypto.createHash('sha256').update(content).digest();
+    this.checksum = digest.toString('hex');
+    this.chunkId = makeChunkId(digest[0] ?? 0, digest[1] ?? 0);
   }
 
   public getSha256(): string {
@@ -50,8 +55,7 @@ export class Chunker {
     const ecc = options.eccLevel || 'L';
     const charCapacity = getMaxCapacity(this.version, ecc);
 
-    // Reserve space for header "NNN|NNN|" -> approx 12 chars
-    const headerSize = options.addHeader ? 12 : 0;
+    const headerSize = options.addHeader ? 16 : 0;
     const workingCapacity = charCapacity - headerSize;
 
     // If using Base64, source chunk size is smaller due to ~33% overhead
@@ -78,14 +82,9 @@ export class Chunker {
       if (options.addHeader) {
         // We use 1-based index for display/header
         const currentChunkIndex = Math.floor(i / this.chunkSize) + 1;
-        let modeChar = options.useBase64 ? 'B' : 'T';
+        const modeChar = options.useBase64 ? 'B' : 'T';
 
-        // Format: chunkIdx|chunkTotal|partNum|partTotal|mode|payload
-        // If no parts specified, use 1|1 for single-file mode
-        const partNum = options.currentPart || 1;
-        const partTotal = options.totalParts || 1;
-
-        payload = `${currentChunkIndex}|${tempChunksCount}|${partNum}|${partTotal}|${modeChar}|${payload}`;
+        payload = `${currentChunkIndex}|${tempChunksCount}|${modeChar}|${this.chunkId}|${payload}`;
       }
 
       this.chunks.push(payload);
@@ -93,11 +92,13 @@ export class Chunker {
 
     // Add checksum as final chunk if requested
     if (options.addChecksum) {
-      // Format: CHECKSUM|partNum|partTotal|mode|sha256hash
-      const partNum = options.currentPart || 1;
-      const partTotal = options.totalParts || 1;
-      const checksumChunk = `CHECKSUM|${partNum}|${partTotal}|T|${this.checksum}`;
+      const checksumChunk = `CHECKSUM|T|${this.chunkId}|${this.checksum}`;
       this.chunks.push(checksumChunk);
     }
   }
+}
+
+function makeChunkId(high: number, low: number): string {
+  const value = ((high & 0xff) << 8) | (low & 0xff);
+  return `${CHUNK_ID_ALPHABET[(value >> 6) & 0x3f]}${CHUNK_ID_ALPHABET[value & 0x3f]}`;
 }

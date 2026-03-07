@@ -18,7 +18,7 @@ test('Chunker splits content correctly', () => {
 
   // Verify header format
   const firstChunk = chunker.chunks[0];
-  assert.match(firstChunk, /^\d+\|\d+\|/, 'Chunk should start with header index|total|');
+  assert.match(firstChunk, /^\d+\|\d+\|[BT]\|..\|/, 'Chunk should start with header index|total|mode|id|');
 });
 
 test('Chunker handles base64', () => {
@@ -34,10 +34,10 @@ test('Chunker handles base64', () => {
     // Header + Base64
     const firstChunk = chunker.chunks[0];
     const parts = firstChunk.split('|');
-    // We added 'mode' flag, so now 4 parts: index|total|mode|payload
-    assert.strictEqual(parts.length, 4);
+    assert.strictEqual(parts.length, 5);
+    assert.match(parts[3], /^..$/, 'Chunk ID should be exactly 2 characters');
 
-    const payload = parts[3];
+    const payload = parts[4];
     const checkBuf = Buffer.from(payload, 'base64');
     assert.deepStrictEqual(checkBuf, input);
 });

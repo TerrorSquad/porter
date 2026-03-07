@@ -117,7 +117,7 @@ The Porter sender generates scannable QR codes. You can build a receiver app in 
 - **Web:** Use a WebRTC camera library to scan and reassemble
 - **CLI:** Use any QR library to decode chunks and rebuild the file
 
-All you need is the chunk format: `index|total|mode|payload`
+All you need is the chunk format: `index|total|mode|id|payload`
 
 ---
 

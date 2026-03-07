@@ -84,25 +84,12 @@ export class Renderer {
     for (const idx of qrIndices) {
       const payload = this.chunks[idx];
 
-      // Parse header to extract part info
       let isChecksum = false;
       let partNum = 1;
-      let partTotal = 1;
+      let partTotal = this.options.totalParts || 1;
 
       if (payload.startsWith('CHECKSUM|')) {
         isChecksum = true;
-        const parts = payload.split('|');
-        if (parts.length >= 3) {
-          partNum = parseInt(parts[1]) || 1;
-          partTotal = parseInt(parts[2]) || 1;
-        }
-      } else {
-        // Try to parse new format: chunkIdx|chunkTotal|partNum|partTotal|mode|payload
-        const headerMatch = payload.match(/^(\d+)\|(\d+)\|(\d+)\|(\d+)\|([BT])\|/);
-        if (headerMatch) {
-          partNum = parseInt(headerMatch[3]) || 1;
-          partTotal = parseInt(headerMatch[4]) || 1;
-        }
       }
 
       try {

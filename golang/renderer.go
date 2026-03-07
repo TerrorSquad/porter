@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -165,34 +164,12 @@ func (r *Renderer) Draw() {
 
 		payload := r.Chunks[r.Index+qIdx]
 
-		// Parse header
 		isChecksum := false
 		partNum := 1
-		partTotal := 1
+		partTotal := max(1, r.Options.TotalParts)
 
 		if strings.HasPrefix(payload, "CHECKSUM|") {
 			isChecksum = true
-			parts := strings.Split(payload, "|")
-			if len(parts) >= 3 {
-				if p, err := strconv.Atoi(parts[1]); err == nil {
-					partNum = p
-				}
-				if p, err := strconv.Atoi(parts[2]); err == nil {
-					partTotal = p
-				}
-			}
-		} else {
-			// Try new format parsing
-			re := regexp.MustCompile(`^(\d+)\|(\d+)\|(\d+)\|(\d+)\|([BT])\|`)
-			matches := re.FindStringSubmatch(payload)
-			if len(matches) > 0 {
-				if p, err := strconv.Atoi(matches[3]); err == nil {
-					partNum = p
-				}
-				if p, err := strconv.Atoi(matches[4]); err == nil {
-					partTotal = p
-				}
-			}
 		}
 
 		// Generate QR code
@@ -318,7 +295,7 @@ func (r *Renderer) renderMultiQR(qrDataList []QRData, maxQRHeight int) {
 	// Sidebar starts after QR codes with at least 8 character margin (more spacing)
 	// Completely fixed position relative to QR code
 	sidebarCol := totalQRWidth + 8
-	
+
 	// Prevent horizontal fluttering during slideshows
 	if sidebarCol > r.maxSidebarCol {
 		r.maxSidebarCol = sidebarCol
