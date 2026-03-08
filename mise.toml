@@ -5,11 +5,11 @@ go = "1.26.1"
 
 [tasks.node-install]
 dir = "nodejs"
-run = "npm install"
+run = "pnpm install"
 
 [tasks.node-build]
 dir = "nodejs"
-run = "npm run build"
+run = "pnpm run build"
 
 [tasks.go-build]
 dir = "golang"

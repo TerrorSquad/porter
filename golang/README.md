@@ -235,7 +235,7 @@ signal.Notify(resize, syscall.SIGWINCH)
 
 ## 🤝 Contributing
 
-See [../BUILD_GUIDE.md](../BUILD_GUIDE.md) for development workflow.
+See [../README.md](../README.md) for repo-level workflow and artifact guidance.
 
 ## 📄 License
 

@@ -45,12 +45,9 @@ cd porter
 
 | Document | Purpose |
 |----------|---------|
-| **[PORTER.md](PORTER.md)** | User guide, features, usage |
-| **[BUILD_GUIDE.md](BUILD_GUIDE.md)** | Building & distributing |
-| **[DISTRIBUTION.md](DISTRIBUTION.md)** | Build process details |
+| **[nodejs/README.md](nodejs/README.md)** | Node.js implementation guide, build presets, and packaging |
+| **[golang/README.md](golang/README.md)** | Go sender, receiver, join flow, and native distribution |
 | **[ANDROID_APP_SPEC.md](ANDROID_APP_SPEC.md)** | Flutter receiver app spec |
-| **[nodejs/README.md](nodejs/README.md)** | Node.js implementation guide |
-| **[golang/README.md](golang/README.md)** | Go implementation guide |
 
 ---
 
@@ -93,18 +90,19 @@ Offline Computer              Phone / Receiver
 .
 ├── nodejs/
 │   ├── src/               # TypeScript source
-│   ├── dist/              # Compiled Node executable (porter.mjs)
+│   ├── scripts/           # Build helpers like size reporting
+│   ├── dist/              # Ignored generated Node builds
 │   ├── package.json
 │   └── test-porter.sh
 ├── golang/
 │   ├── main.go
-│   ├── chunker.go
-│   ├── renderer.go
-│   ├── state.go
+│   ├── receiver.go
+│   ├── join.go
+│   ├── transfer_manifest.go
 │   ├── go.mod
 │   └── Makefile
-├── PORTER.md
-├── BUILD_GUIDE.md
+├── mise.toml
+├── ANDROID_APP_SPEC.md
 └── README.md
 ```
 
@@ -175,6 +173,71 @@ cd golang
 **For detailed commands and options:**
 - Node.js: See [nodejs/README.md](nodejs/README.md)
 - Go: See [golang/README.md](golang/README.md)
+
+---
+
+## 🔨 Build And Distribution
+
+### Workspace Prerequisites
+
+- Node.js `24.13.0` and `pnpm 10.30.1` for `nodejs/`
+- Go `1.26.1` for `golang/`
+- `mise` is optional; the repo already defines matching tasks in `mise.toml`
+
+### Node.js Builds
+
+```bash
+cd nodejs
+pnpm install
+
+# Full local build
+pnpm run build
+
+# Recommended slim preset
+pnpm run build:slim
+
+# Smallest externalized build
+pnpm run build:minimal
+
+# Self-contained single-file distributions
+pnpm run build:standalone
+pnpm run build:standalone:slim
+pnpm run build:standalone:minimal
+
+# Tests and size reporting
+pnpm test
+pnpm run size:report
+```
+
+Recommended Node artifacts:
+
+- `nodejs/dist/porter.slideshow-only.mjs`: best slim preset when project dependencies are available
+- `nodejs/dist/porter.standalone.slideshow-only.mjs`: recommended copyable single-file build
+- `nodejs/dist/porter.minimal.mjs` and `nodejs/dist/porter.standalone.minimal.mjs`: smallest builds, with optional features removed
+
+### Go Builds
+
+```bash
+cd golang
+make build
+
+# or
+go build -o porter .
+```
+
+Primary Go artifact:
+
+- `golang/porter`: native sender and HTTP receiver binary
+
+### mise Tasks
+
+From the repo root:
+
+```bash
+mise run node-install
+mise run node-build
+mise run go-build
+```
 
 ---
 
