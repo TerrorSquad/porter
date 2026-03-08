@@ -13,8 +13,9 @@ cd nodejs
 ### Node.js Version (Recommended)
 ```bash
 cd nodejs
-npm install --production
-./dist/porter.mjs myfile.txt --slideshow
+pnpm install
+pnpm run build:slim
+./dist/porter.slideshow-only.mjs myfile.txt
 ```
 
 **→ See [nodejs/README.md](nodejs/README.md) for detailed installation & usage**
@@ -126,7 +127,7 @@ All you need is the chunk format: `index|total|mode|id|payload`
 | Component | Purpose |
 |-----------|---------|
 | **Rollup** | Bundle TypeScript → single-file JS |
-| **qrcode-terminal** | Terminal QR rendering |
+| **qrcode-generator** | QR matrix generation for terminal rendering |
 | **Node.js Crypto** | MD5 checksums |
 | **Zlib** | Server-side gzip |
 
@@ -159,7 +160,7 @@ All you need is the chunk format: `index|total|mode|id|payload`
 ### Node.js Version
 ```bash
 cd nodejs
-./dist/porter.mjs myfile.pdf --slideshow --speed=0.3
+./dist/porter.slideshow-only.mjs myfile.pdf --speed=0.3
 ```
 
 ### Go Version

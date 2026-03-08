@@ -1,6 +1,7 @@
 
 import crypto from 'crypto';
-import { getMaxCapacity } from './constants';
+import { getMaxCapacity } from './constants.js';
+import { FEATURE_BASE64 } from './features.js';
 
 const CHUNK_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
 
@@ -39,6 +40,7 @@ export class Chunker {
   }
 
   public calculateLayout(rows: number, options: ChunkOptions) {
+    const useBase64 = FEATURE_BASE64 && options.useBase64;
     const availableRows = rows - options.buffer;
     // Heuristic for QR version capacity based on terminal height:
     // QR Size (modules) = 17 + 4 * version
@@ -60,7 +62,7 @@ export class Chunker {
 
     // If using Base64, source chunk size is smaller due to ~33% overhead
     // base64 size = ceil(n / 3) * 4. So n approx 0.75 * size
-    this.chunkSize = options.useBase64
+    this.chunkSize = useBase64
       ? Math.floor(workingCapacity * 0.75)
       : workingCapacity;
 
@@ -75,14 +77,14 @@ export class Chunker {
 
     for (let i = 0; i < totalLength; i += this.chunkSize) {
       const chunkBuffer = this.content.subarray(i, i + this.chunkSize);
-      let payload = options.useBase64
+      let payload = useBase64
         ? chunkBuffer.toString('base64')
         : chunkBuffer.toString('utf8');
 
       if (options.addHeader) {
         // We use 1-based index for display/header
         const currentChunkIndex = Math.floor(i / this.chunkSize) + 1;
-        const modeChar = options.useBase64 ? 'B' : 'T';
+        const modeChar = useBase64 ? 'B' : 'T';
 
         payload = `${currentChunkIndex}|${tempChunksCount}|${modeChar}|${this.chunkId}|${payload}`;
       }

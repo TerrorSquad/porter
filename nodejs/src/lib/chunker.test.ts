@@ -1,7 +1,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { Chunker } from './chunker';
+import { Chunker } from './chunker.js';
 
 test('Chunker splits content correctly', () => {
   const content = Buffer.from('HelloWorld'.repeat(100)); // 1000 chars

@@ -4,9 +4,16 @@ import fs from 'fs';
 import path from 'path';
 import tty from 'tty';
 import crypto from 'crypto';
-import { Chunker } from './lib/chunker';
-import { Renderer } from './lib/renderer';
-import { StateManager } from './lib/state';
+import { Chunker } from './lib/chunker.js';
+import {
+  FEATURE_BASE64,
+  FEATURE_INTERACTIVE_CONTROLS,
+  FEATURE_INVERT,
+  FEATURE_MULTI_PART_INPUT,
+  FEATURE_MULTI_QR,
+} from './lib/features.js';
+import { Renderer } from './lib/renderer.js';
+import { StateManager } from './lib/state.js';
 
 // --- Helper: Parse Flags ---
 const args = process.argv.slice(2);
@@ -21,8 +28,8 @@ runSender();
 
 function runSender() {
   const inputFiles = args.filter(a => !a.startsWith('--')); // All non-flag args are files
-  const checksumFile = flags['--verify'] || '';
-  const splitAware = flags['--split-aware'] === 'true';
+  const checksumFile = FEATURE_MULTI_PART_INPUT ? (flags['--verify'] || '') : '';
+  const splitAware = FEATURE_MULTI_PART_INPUT && flags['--split-aware'] === 'true';
 
   // --- Input Handling ---
   let content: Buffer;
@@ -48,7 +55,7 @@ function runSender() {
     const baseName = fileNameOnly.replace(/\.part(?:\d+|[a-z]{2})$/, '');
 
     // If split-aware or file matches pattern, detect all .partXXX files and sort them
-    if (splitAware || /\.part(?:\d+|[a-z]{2})$/.test(fileNameOnly)) {
+    if (FEATURE_MULTI_PART_INPUT && (splitAware || /\.part(?:\d+|[a-z]{2})$/.test(fileNameOnly))) {
       const dir = path.dirname(firstFile) || '.';
       const allFiles = fs.readdirSync(dir);
       const partFiles = allFiles
@@ -108,14 +115,26 @@ function runSender() {
     console.log("  porter <file.part*.txt|file.partaa|...> [options]");
     console.log("  echo 'data' | porter [options]");
     console.log("\nOptions:");
-    console.log("  --slideshow       Start in slideshow mode");
-    console.log("  --base64          Enable Base64 encoding (for binary files)");
-    console.log("  --verify=<file>   Verify against SHA256 checksum file");
-    console.log("  --split-aware     Auto-detect and concatenate .part*.txt or .partaa files");
-    console.log("  --invert          Invert QR code colors");
+    if (FEATURE_INTERACTIVE_CONTROLS) {
+      console.log("  --slideshow       Start in slideshow mode");
+    } else {
+      console.log("  slideshow-only    This build always starts in slideshow mode");
+    }
+    if (FEATURE_BASE64) {
+      console.log("  --base64          Enable Base64 encoding (for binary files)");
+    }
+    if (FEATURE_MULTI_PART_INPUT) {
+      console.log("  --verify=<file>   Verify against SHA256 checksum file");
+      console.log("  --split-aware     Auto-detect and concatenate .part*.txt or .partaa files");
+    }
+    if (FEATURE_INVERT) {
+      console.log("  --invert          Invert QR code colors");
+    }
     console.log("  --ecc=L|M|Q|H     Error correction level (Default: L)");
-    console.log("  --multi=N|auto    Render N QR codes side-by-side (1-4, or 'auto')");
-    console.log("                    Speeds up transfer: auto-detected or manual");
+    if (FEATURE_MULTI_QR) {
+      console.log("  --multi=N|auto    Render N QR codes side-by-side (1-4, or 'auto')");
+      console.log("                    Speeds up transfer: auto-detected or manual");
+    }
     console.log("  --speed=<seconds> QR code delay (Default: 0.5)");
     console.log("                    0.5 = 2 chunks/sec (default, works everywhere)");
     console.log("                    0.3 = 3.3 chunks/sec (good lighting)");
@@ -132,16 +151,33 @@ function runSender() {
   }
 
   // --- Configuration ---
-  const isSlideshow = flags['--slideshow'] === 'true';
-  const useBase64 = flags['--base64'] === 'true';
-  const useInverted = flags['--invert'] === 'true';
+  const isSlideshow = FEATURE_INTERACTIVE_CONTROLS ? flags['--slideshow'] === 'true' : true;
+  const requestedBase64 = flags['--base64'] === 'true';
+  if (requestedBase64 && !FEATURE_BASE64) {
+    console.error("Error: this build was compiled without Base64 support.");
+    process.exit(1);
+  }
+  if ((flags['--verify'] || flags['--split-aware']) && !FEATURE_MULTI_PART_INPUT) {
+    console.error("Error: this build was compiled without multipart input support.");
+    process.exit(1);
+  }
+  if (flags['--invert'] && !FEATURE_INVERT) {
+    console.error("Error: this build was compiled without invert support.");
+    process.exit(1);
+  }
+  if (flags['--multi'] && !FEATURE_MULTI_QR) {
+    console.error("Error: this build was compiled without multi-QR support.");
+    process.exit(1);
+  }
+  const useBase64 = FEATURE_BASE64 && requestedBase64;
+  const useInverted = FEATURE_INVERT && flags['--invert'] === 'true';
   const speed = parseFloat(flags['--speed']) || 0.5; // Optimized default
   const buffer = parseInt(flags['--buffer']) || 10;
   const eccLevel = (['L', 'M', 'Q', 'H'].includes(flags['--ecc']) ? flags['--ecc'] : 'L') as 'L'|'M'|'Q'|'H';
 
   // Parse multi-QR option (1-4 codes per frame)
   let multiQr: number | undefined;
-  if (flags['--multi']) {
+  if (FEATURE_MULTI_QR && flags['--multi']) {
     const multiVal = flags['--multi'].toLowerCase();
     if (multiVal === 'auto') {
       // Auto-detect based on terminal width (rough heuristic: 29 chars per small QR + 2 char gap)
@@ -205,41 +241,26 @@ function runSender() {
     }
   }
 
-  // --- Input Stream Setup ---
-  // If we read from Stdin (pipe), process.stdin is exhausted/closed.
-  // We must open /dev/tty to get keyboard input.
-  let inputStream: NodeJS.ReadStream;
+  let inputStream: NodeJS.ReadStream | undefined;
 
-  if (!process.stdin.isTTY) {
-    try {
-      // Open TTY for interactive control
-      const ttyFd = fs.openSync('/dev/tty', 'r');
-      inputStream = new tty.ReadStream(ttyFd);
-    } catch (e) {
-      console.warn("Warning: Could not open /dev/tty. Interactive controls disabled.");
-      // Dummy stream if TTY not available
-      inputStream = new tty.ReadStream(0);
-    }
-  } else {
-    inputStream = process.stdin;
-  }
-
-  // --- Countdown Display ---
   function showCountdown(onComplete: () => void) {
+    if (!FEATURE_INTERACTIVE_CONTROLS) {
+      onComplete();
+      return;
+    }
+
     let countdown = 3;
 
     const displayCountdown = () => {
       const centerRow = Math.floor((process.stdout.rows || 24) / 2);
       const centerCol = Math.floor((process.stdout.columns || 80) / 2) - 1;
 
-      // Just overlay the countdown without clearing screen
       process.stdout.write(`\x1b[${centerRow};${centerCol}H`);
       process.stdout.write(`\x1b[1;33m${countdown}\x1b[0m`);
 
       countdown--;
 
       if (countdown < 0) {
-        // Clear the countdown number line and redraw UI
         process.stdout.write(`\x1b[${centerRow};${centerCol}H\x1b[2K\x1b[H`);
         onComplete();
       } else {
@@ -250,8 +271,23 @@ function runSender() {
     displayCountdown();
   }
 
-  // --- Interactive Loop ---
   function initInput() {
+    if (!FEATURE_INTERACTIVE_CONTROLS) {
+      return;
+    }
+
+    if (!process.stdin.isTTY) {
+      try {
+        const ttyFd = fs.openSync('/dev/tty', 'r');
+        inputStream = new tty.ReadStream(ttyFd);
+      } catch (e) {
+        console.warn("Warning: Could not open /dev/tty. Interactive controls disabled.");
+        inputStream = new tty.ReadStream(0);
+      }
+    } else {
+      inputStream = process.stdin;
+    }
+
     if (inputStream.setRawMode) {
       inputStream.setRawMode(true);
     }
@@ -261,7 +297,6 @@ function runSender() {
     inputStream.on('data', (input: Buffer | string) => {
       const key = input.toString();
 
-      // Navigation
       if (key === '\u001b[C' || key === '\u001b[A' || key === 'l' || key === 'k' || key === ' ') {
         renderer.moveNext();
         draw();
@@ -276,7 +311,6 @@ function runSender() {
         StateManager.saveProgress(fileName, renderer.index);
         process.exit();
       } else if (key === 's') {
-        // If turning ON slideshow, show countdown first
         if (!renderer.options.isSlideshow) {
           showCountdown(() => {
             renderer.options.isSlideshow = true;
@@ -284,7 +318,6 @@ function runSender() {
             StateManager.saveProgress(fileName, renderer.index);
           });
         } else {
-          // If turning OFF, just stop
           renderer.options.isSlideshow = false;
           draw();
           StateManager.saveProgress(fileName, renderer.index);

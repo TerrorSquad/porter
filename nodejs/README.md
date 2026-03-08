@@ -52,13 +52,66 @@ porter --help
 # Install dependencies
 pnpm install
 
-# Build
+# Build the smaller project-local CLI (dist/porter.mjs)
 pnpm run build
-# → Outputs dist/porter.mjs
+
+# Build the recommended slim preset
+pnpm run build:slim
+
+# Build a smaller variant with Base64 support compiled out
+pnpm run build:no-base64
+
+# Build a smaller variant without multipart input support
+pnpm run build:single-file-only
+
+# Build variants without invert or multi-QR support
+pnpm run build:no-invert
+pnpm run build:no-multi-qr
+
+# Build a slideshow-only variant without keyboard controls
+pnpm run build:slideshow-only
+
+# Build the smallest externalized variant
+pnpm run build:minimal
+
+# Build the standalone single-file CLI
+pnpm run build:standalone
+# → Outputs dist/porter.standalone.mjs
+
+# Build the recommended standalone slim preset
+pnpm run build:standalone:slim
+
+# Standalone variant without Base64 support
+pnpm run build:standalone:no-base64
+
+# Standalone variant without multipart input support
+pnpm run build:standalone:single-file-only
+
+# Other standalone feature-trimmed variants
+pnpm run build:standalone:no-invert
+pnpm run build:standalone:no-multi-qr
+pnpm run build:standalone:slideshow-only
+pnpm run build:standalone:minimal
+
+# Print current build sizes
+pnpm run size:report
 
 # Test
 ./dist/porter.mjs --help
 ```
+
+### Recommended Presets
+
+Use these presets unless you specifically need to tune individual feature flags:
+
+| Command | Output | Use when |
+|---------|--------|----------|
+| `pnpm run build` | `dist/porter.mjs` | You want the default local build with the full interactive CLI. |
+| `pnpm run build:slim` | `dist/porter.slideshow-only.mjs` | You want the best size reduction without removing multipart, invert, or multi-QR support. |
+| `pnpm run build:minimal` | `dist/porter.minimal.mjs` | You want the absolute smallest externalized build and can live without optional features. |
+| `pnpm run build:standalone` | `dist/porter.standalone.mjs` | You need one self-contained file for another machine. |
+| `pnpm run build:standalone:slim` | `dist/porter.standalone.slideshow-only.mjs` | You need a smaller self-contained file and slideshow mode is enough. |
+| `pnpm run build:standalone:minimal` | `dist/porter.standalone.minimal.mjs` | You need the smallest self-contained file. |
 
 ### Project Structure
 ```
@@ -116,8 +169,8 @@ nodejs/
 | Component | Purpose |
 |-----------|---------|
 | **TypeScript** | Type-safe source code |
-| **Rollup** | Single-file bundling for distributable CLI builds |
-| **qrcode-terminal** | Terminal QR code rendering |
+| **Rollup** | Minified CLI bundling |
+| **qrcode-generator** | QR matrix generation |
 | **Node.js Crypto** | MD5 checksums |
 | **Zlib** | Gzip compression |
 
@@ -145,15 +198,16 @@ nodejs/
 
 ### Creating Portable Package
 ```bash
-# Build & package
+# Small local build (expects node_modules to be present)
 pnpm run build
-tar -czf porter-nodejs.tar.gz dist/ node_modules/ package.json
+
+# Standalone build for copying elsewhere
+pnpm run build:standalone
+tar -czf porter-nodejs.tar.gz dist/porter.standalone.mjs
 
 # User installation
 tar -xzf porter-nodejs.tar.gz
-cd porter-nodejs
-npm install --production
-./dist/porter.mjs --help
+node porter.standalone.mjs --help
 ```
 
 ### Publishing to npm
@@ -186,7 +240,36 @@ rm -rf dist/
 pnpm run build
 ```
 
-If you need an externalized bundle for environments that already provide `qrcode-terminal`, run `pnpm run build:external`.
+Build outputs:
+- `pnpm run build`: minified `dist/porter.mjs`, smaller but expects project dependencies to be installed.
+- `pnpm run build:slim`: alias for `build:slideshow-only`, recommended slim preset.
+- `pnpm run build:no-base64`: same as above, but compiled without `--base64` support.
+- `pnpm run build:single-file-only`: same as above, but compiled without `.part*` auto-assembly or `--verify` support.
+- `pnpm run build:no-invert`: same as above, but compiled without `--invert` support.
+- `pnpm run build:no-multi-qr`: same as above, but compiled without `--multi` support.
+- `pnpm run build:slideshow-only`: same as above, but compiled without keyboard controls and always starts in slideshow mode.
+- `pnpm run build:minimal`: strips all optional features above in one externalized build.
+- `pnpm run build:standalone`: minified `dist/porter.standalone.mjs`, self-contained for copying to another machine.
+- `pnpm run build:standalone:slim`: alias for `build:standalone:slideshow-only`, recommended slim standalone preset.
+- `pnpm run build:standalone:no-base64`: standalone variant without `--base64` support.
+- `pnpm run build:standalone:single-file-only`: standalone variant without multipart input support.
+- `pnpm run build:standalone:no-invert`: standalone variant without invert support.
+- `pnpm run build:standalone:no-multi-qr`: standalone variant without multi-QR support.
+- `pnpm run build:standalone:slideshow-only`: standalone variant without keyboard controls.
+- `pnpm run build:standalone:minimal`: smallest self-contained variant.
+- `pnpm run size:report`: prints raw and gzip-compressed sizes for current dist outputs.
+
+Modular feature builds:
+- Build-time feature flags now cover Base64, multipart input, invert, multi-QR, and interactive controls.
+- In `no-base64` builds, the `--base64` flag is removed from help and rejected at runtime.
+- The build-time flag is `PORTER_FEATURE_BASE64=false`, wired through Rollup so dead Base64 branches can be tree-shaken away.
+- Multipart input support is also modular.
+- In `single-file-only` builds, `--split-aware` and `--verify` are removed and rejected, and `.part*` auto-discovery logic is compiled out.
+- The build-time flag is `PORTER_FEATURE_MULTI_PART_INPUT=false`.
+- Invert support is modular via `PORTER_FEATURE_INVERT=false`.
+- Multi-QR support is modular via `PORTER_FEATURE_MULTI_QR=false`.
+- Interactive controls are modular via `PORTER_FEATURE_INTERACTIVE_CONTROLS=false`; those builds start directly in slideshow mode and omit keyboard-control UI.
+- `pnpm run build:minimal` and `pnpm run build:standalone:minimal` strip all optional features in one build.
 
 ## 🤝 Contributing
 

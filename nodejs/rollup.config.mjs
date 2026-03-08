@@ -1,32 +1,26 @@
 import { builtinModules } from 'node:module';
 import commonjs from '@rollup/plugin-commonjs';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
+import replace from '@rollup/plugin-replace';
+import terser from '@rollup/plugin-terser';
 import typescript from '@rollup/plugin-typescript';
 
 const externalDeps = (process.env.EXTERNAL_DEPS ?? '')
   .split(',')
   .map(entry => entry.trim())
   .filter(Boolean);
+const outputFile = process.env.OUTPUT_FILE ?? 'dist/porter.mjs';
+const featureBase64 = process.env.PORTER_FEATURE_BASE64 ?? 'true';
+const featureMultiPartInput = process.env.PORTER_FEATURE_MULTI_PART_INPUT ?? 'true';
+const featureInvert = process.env.PORTER_FEATURE_INVERT ?? 'true';
+const featureMultiQr = process.env.PORTER_FEATURE_MULTI_QR ?? 'true';
+const featureInteractiveControls = process.env.PORTER_FEATURE_INTERACTIVE_CONTROLS ?? 'true';
 
 const externalModules = new Set([
   ...builtinModules,
   ...builtinModules.map(moduleName => `node:${moduleName}`),
   ...externalDeps,
 ]);
-
-const fixQrcodeTerminalEscapes = {
-  name: 'fix-qrcode-terminal-escapes',
-  transform(code, id) {
-    if (!id.includes('/qrcode-terminal/lib/main.js')) {
-      return null;
-    }
-
-    return {
-      code: code.replace(/\\033/g, '\\x1b'),
-      map: null,
-    };
-  },
-};
 
 function isExternal(id) {
   if (externalModules.has(id)) {
@@ -39,13 +33,21 @@ function isExternal(id) {
 export default {
   input: 'src/porter.ts',
   output: {
-    compact: true,
-    file: 'dist/porter.mjs',
+    file: outputFile,
     format: 'esm',
   },
   external: isExternal,
   plugins: [
-    fixQrcodeTerminalEscapes,
+    replace({
+      preventAssignment: true,
+      values: {
+        'process.env.PORTER_FEATURE_BASE64': JSON.stringify(featureBase64),
+        'process.env.PORTER_FEATURE_MULTI_PART_INPUT': JSON.stringify(featureMultiPartInput),
+        'process.env.PORTER_FEATURE_INVERT': JSON.stringify(featureInvert),
+        'process.env.PORTER_FEATURE_MULTI_QR': JSON.stringify(featureMultiQr),
+        'process.env.PORTER_FEATURE_INTERACTIVE_CONTROLS': JSON.stringify(featureInteractiveControls),
+      },
+    }),
     nodeResolve({
       extensions: ['.mjs', '.js', '.json', '.node', '.ts'],
       preferBuiltins: true,
@@ -57,6 +59,16 @@ export default {
         declarationMap: false,
       },
       tsconfig: './tsconfig.json',
+    }),
+    terser({
+      compress: {
+        passes: 2,
+        pure_getters: true,
+      },
+      format: {
+        comments: false,
+      },
+      mangle: true,
     }),
   ],
 };

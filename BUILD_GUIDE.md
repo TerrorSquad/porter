@@ -120,9 +120,21 @@ This repository now has two implementations:
 
 ```bash
 cd nodejs
-npm install
-npm run build
+pnpm install
+pnpm run build
 ./dist/porter.mjs --help
+
+# Recommended slim preset for transfers
+pnpm run build:slim
+./dist/porter.slideshow-only.mjs --help
+
+# Standalone single-file distribution
+pnpm run build:standalone
+node ./dist/porter.standalone.mjs --help
+
+# Smaller standalone preset
+pnpm run build:standalone:slim
+node ./dist/porter.standalone.slideshow-only.mjs --help
 ```
 
 ## Go build
