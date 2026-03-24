@@ -10,7 +10,6 @@ cd nodejs
 
 ## 📦 Quick Start
 
-### Node.js Version (Recommended)
 ```bash
 cd nodejs
 pnpm install
@@ -20,23 +19,19 @@ pnpm run build:slim
 
 **→ See [nodejs/README.md](nodejs/README.md) for detailed installation & usage**
 
-### Go Version (Native Binary)
+### Web Receiver
 ```bash
-cd golang
-make build
-./porter myfile.txt
+cd web
+pnpm install
+pnpm run dev
+# → Open http://localhost:5173 on your phone to scan QR codes
 ```
 
-**→ See [golang/README.md](golang/README.md) for detailed installation & usage**
-
-### Quick Install (Any Version)
+### HTTP Receiver (porter serve)
 ```bash
-# Download release
-wget https://github.com/gninkovic/porter/releases/download/latest/porter.tar.gz
-tar xzf porter.tar.gz
-cd porter
-
-# Choose your implementation (nodejs/ or golang/)
+cd nodejs
+./dist/porter.mjs serve --port=8080
+# → Any device on your LAN can POST QR scan JSON to http://<ip>:8080/upload
 ```
 
 ---
@@ -45,8 +40,8 @@ cd porter
 
 | Document | Purpose |
 |----------|---------|
-| **[nodejs/README.md](nodejs/README.md)** | Node.js implementation guide, build presets, and packaging |
-| **[golang/README.md](golang/README.md)** | Go sender, receiver, join flow, and native distribution |
+| **[nodejs/README.md](nodejs/README.md)** | Node.js sender, receiver, join, build presets |
+| **[web/README.md](web/README.md)** | Web receiver — camera scanning and file assembly |
 | **[ANDROID_APP_SPEC.md](ANDROID_APP_SPEC.md)** | Flutter receiver app spec |
 
 ---
@@ -90,17 +85,17 @@ Offline Computer              Phone / Receiver
 .
 ├── nodejs/
 │   ├── src/               # TypeScript source
+│   │   ├── porter.ts      # CLI entry point (send / serve / join)
+│   │   └── lib/           # chunker, renderer, state, receiver, joiner
 │   ├── scripts/           # Build helpers like size reporting
 │   ├── dist/              # Ignored generated Node builds
 │   ├── package.json
 │   └── test-porter.sh
-├── golang/
-│   ├── main.go
-│   ├── receiver.go
-│   ├── join.go
-│   ├── transfer_manifest.go
-│   ├── go.mod
-│   └── Makefile
+├── web/
+│   ├── src/               # TypeScript + Vite receiver UI
+│   │   ├── assembler.ts   # Chunk parsing and SHA-256 verification
+│   │   └── main.ts        # Camera loop, drag-and-drop, relay to porter serve
+│   └── index.html
 ├── mise.toml
 ├── ANDROID_APP_SPEC.md
 └── README.md
@@ -159,20 +154,15 @@ All you need is the chunk format: `index|total|mode|id|payload`
 ```bash
 cd nodejs
 ./dist/porter.slideshow-only.mjs myfile.pdf --speed=0.3
-```
-
-### Go Version
-```bash
-cd golang
-./porter myfile.txt
 
 # Receive files over HTTP from another device on your LAN
-./porter serve --port=8080 --output-dir=received
+./dist/porter.mjs serve --port=8080 --output-dir=received
+
+# Join a previously received multi-part transfer
+./dist/porter.mjs join received/<id>
 ```
 
-**For detailed commands and options:**
-- Node.js: See [nodejs/README.md](nodejs/README.md)
-- Go: See [golang/README.md](golang/README.md)
+**For detailed commands and options, see [nodejs/README.md](nodejs/README.md)**
 
 ---
 
@@ -180,8 +170,7 @@ cd golang
 
 ### Workspace Prerequisites
 
-- Node.js `24.13.0` and `pnpm 10.30.1` for `nodejs/`
-- Go `1.26.1` for `golang/`
+- Node.js `24.13.0` and `pnpm 10.30.1` for `nodejs/` and `web/`
 - `mise` is optional; the repo already defines matching tasks in `mise.toml`
 
 ### Node.js Builds
@@ -215,20 +204,6 @@ Recommended Node artifacts:
 - `nodejs/dist/porter.standalone.slideshow-only.mjs`: recommended copyable single-file build
 - `nodejs/dist/porter.minimal.mjs` and `nodejs/dist/porter.standalone.minimal.mjs`: smallest builds, with optional features removed
 
-### Go Builds
-
-```bash
-cd golang
-make build
-
-# or
-go build -o porter .
-```
-
-Primary Go artifact:
-
-- `golang/porter`: native sender and HTTP receiver binary
-
 ### mise Tasks
 
 From the repo root:
@@ -236,7 +211,6 @@ From the repo root:
 ```bash
 mise run node-install
 mise run node-build
-mise run go-build
 ```
 
 ---
