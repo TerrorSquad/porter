@@ -15,6 +15,8 @@ const featureMultiPartInput = process.env.PORTER_FEATURE_MULTI_PART_INPUT ?? 'tr
 const featureInvert = process.env.PORTER_FEATURE_INVERT ?? 'true';
 const featureMultiQr = process.env.PORTER_FEATURE_MULTI_QR ?? 'true';
 const featureInteractiveControls = process.env.PORTER_FEATURE_INTERACTIVE_CONTROLS ?? 'true';
+const featureServe = process.env.PORTER_FEATURE_SERVE ?? 'true';
+const featureJoin = process.env.PORTER_FEATURE_JOIN ?? 'true';
 
 const externalModules = new Set([
   ...builtinModules,
@@ -35,6 +37,7 @@ export default {
   output: {
     file: outputFile,
     format: 'esm',
+    inlineDynamicImports: true,
   },
   external: isExternal,
   plugins: [
@@ -46,6 +49,8 @@ export default {
         'process.env.PORTER_FEATURE_INVERT': JSON.stringify(featureInvert),
         'process.env.PORTER_FEATURE_MULTI_QR': JSON.stringify(featureMultiQr),
         'process.env.PORTER_FEATURE_INTERACTIVE_CONTROLS': JSON.stringify(featureInteractiveControls),
+        'process.env.PORTER_FEATURE_SERVE': JSON.stringify(featureServe),
+        'process.env.PORTER_FEATURE_JOIN': JSON.stringify(featureJoin),
       },
     }),
     nodeResolve({

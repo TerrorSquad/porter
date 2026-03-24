@@ -11,6 +11,8 @@ import {
   FEATURE_INVERT,
   FEATURE_MULTI_PART_INPUT,
   FEATURE_MULTI_QR,
+  FEATURE_SERVE,
+  FEATURE_JOIN,
 } from './lib/features.js';
 import { Renderer } from './lib/renderer.js';
 import { StateManager } from './lib/state.js';
@@ -24,7 +26,31 @@ const flags = Object.fromEntries(
   })
 );
 
-runSender();
+// --- Subcommand dispatch ---
+const subcommand = args[0];
+if (subcommand === 'serve') {
+  if (!FEATURE_SERVE) {
+    console.error('Error: this build was compiled without receiver support.');
+    process.exit(1);
+  }
+  const { runReceiver } = await import('./lib/receiver.js');
+  const subFlags = Object.fromEntries(
+    args.slice(1).filter(a => a.startsWith('--')).map(a => {
+      const [k, ...rest] = a.slice(2).split('=');
+      return [k, rest.join('=') || 'true'];
+    }),
+  );
+  runReceiver(subFlags);
+} else if (subcommand === 'join') {
+  if (!FEATURE_JOIN) {
+    console.error('Error: this build was compiled without join support.');
+    process.exit(1);
+  }
+  const { runJoin } = await import('./lib/joiner.js');
+  runJoin(args.slice(1));
+} else {
+  runSender();
+}
 
 function runSender() {
   const inputFiles = args.filter(a => !a.startsWith('--')); // All non-flag args are files
@@ -141,6 +167,18 @@ function runSender() {
     console.log("                    0.2 = 5 chunks/sec (bright light + steady)");
     console.log("                    0.1 = 10 chunks/sec (optimal conditions)");
     console.log("  --buffer=10       Vertical buffer lines");
+    if (FEATURE_SERVE) {
+      console.log("");
+      console.log("\x1b[1mSubcommands:\x1b[0m");
+      console.log("  porter serve [--port=8080] [--host=0.0.0.0] [--output-dir=received]");
+      console.log("              Start an HTTP receiver. Accepts QR scan JSON uploads,");
+      console.log("              raw file uploads, and multipart/form-data.");
+      console.log("              Reconstructs multi-part transfers automatically.");
+    }
+    if (FEATURE_JOIN) {
+      console.log("  porter join <transfer-dir|id> [--output=<file>] [--force] [--no-verify]");
+      console.log("              Join previously received .partXX files into a single file.");
+    }
     process.exit(1);
   }
 
