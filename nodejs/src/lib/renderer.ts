@@ -227,7 +227,11 @@ export class Renderer {
       );
       let sidebarText = '';
 
-      if (i === 1) sidebarText = `\x1b[1;36m📄 FILE: \x1b[0m${this.fileName}`;
+      if (i === 1) {
+        if (this.options.isSlideshow) {
+          process.stdout.write(`\x1b[1;${termWidth}H\x1b[31m●\x1b[0m`);
+        }
+      }
       if (i === 2) {
         const multiStr =
           FEATURE_MULTI_QR && qrDataList.length > 1 ? ` (×${qrDataList.length})` : '';
@@ -255,14 +259,6 @@ export class Renderer {
         if (i === 11) sidebarText = `   Back:  \x1b[7m H \x1b[0m or \x1b[7m ← \x1b[0m`;
         if (i === 12) sidebarText = `   Auto:  \x1b[7m S \x1b[0m (Toggle)`;
         if (i === 13) sidebarText = `   Quit:  \x1b[7m Q \x1b[0m`;
-      }
-
-      if (i === 15) {
-        if (this.options.isSlideshow) {
-          sidebarText = `\x1b[5;31m● STREAMING ACTIVE\x1b[0m`;
-        } else {
-          sidebarText = '';
-        }
       }
 
       // Print Sidebar if exists, or clear line segment if inside sidebar zone
