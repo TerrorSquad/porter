@@ -317,7 +317,8 @@ func readQRScanUpload(path string) (qrScanUpload, bool, error) {
 		return qrScanUpload{}, false, nil
 	}
 
-	if strings.TrimSpace(upload.Format) != "" && upload.Format != "QR_CODE" {
+	// Accept any casing / separator variant: "QR_CODE", "QRCode", "qrcode", etc.
+	if normalizedFormat := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(upload.Format), "_", "")); normalizedFormat != "" && normalizedFormat != "QRCODE" {
 		return qrScanUpload{}, false, nil
 	}
 
