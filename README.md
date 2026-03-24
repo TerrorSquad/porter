@@ -179,30 +179,18 @@ cd nodejs
 cd nodejs
 pnpm install
 
-# Full local build
+# Build both artifacts at once
 pnpm run build
 
-# Recommended slim preset
-pnpm run build:slim
-
-# Smallest externalized build
-pnpm run build:minimal
-
-# Self-contained single-file distributions
-pnpm run build:standalone
-pnpm run build:standalone:slim
-pnpm run build:standalone:minimal
-
-# Tests and size reporting
-pnpm test
-pnpm run size:report
+# Or individually
+pnpm run build:external    # porter.mjs  (requires qrcode-generator)
+pnpm run build:standalone  # porter.standalone.mjs  (self-contained, no dependencies)
 ```
 
-Recommended Node artifacts:
+Artifacts:
 
-- `nodejs/dist/porter.slideshow-only.mjs`: best slim preset when project dependencies are available
-- `nodejs/dist/porter.standalone.slideshow-only.mjs`: recommended copyable single-file build
-- `nodejs/dist/porter.minimal.mjs` and `nodejs/dist/porter.standalone.minimal.mjs`: smallest builds, with optional features removed
+- `nodejs/dist/porter.mjs` — requires `qrcode-generator` to be installed alongside it
+- `nodejs/dist/porter.standalone.mjs` — single copyable file, no external dependencies
 
 ### mise Tasks
 

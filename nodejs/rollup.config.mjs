@@ -10,13 +10,6 @@ const externalDeps = (process.env.EXTERNAL_DEPS ?? '')
   .map(entry => entry.trim())
   .filter(Boolean);
 const outputFile = process.env.OUTPUT_FILE ?? 'dist/porter.mjs';
-const featureBase64 = process.env.PORTER_FEATURE_BASE64 ?? 'true';
-const featureMultiPartInput = process.env.PORTER_FEATURE_MULTI_PART_INPUT ?? 'true';
-const featureInvert = process.env.PORTER_FEATURE_INVERT ?? 'true';
-const featureMultiQr = process.env.PORTER_FEATURE_MULTI_QR ?? 'true';
-const featureInteractiveControls = process.env.PORTER_FEATURE_INTERACTIVE_CONTROLS ?? 'true';
-const featureServe = process.env.PORTER_FEATURE_SERVE ?? 'true';
-const featureJoin = process.env.PORTER_FEATURE_JOIN ?? 'true';
 
 const externalModules = new Set([
   ...builtinModules,
@@ -44,13 +37,13 @@ export default {
     replace({
       preventAssignment: true,
       values: {
-        'process.env.PORTER_FEATURE_BASE64': JSON.stringify(featureBase64),
-        'process.env.PORTER_FEATURE_MULTI_PART_INPUT': JSON.stringify(featureMultiPartInput),
-        'process.env.PORTER_FEATURE_INVERT': JSON.stringify(featureInvert),
-        'process.env.PORTER_FEATURE_MULTI_QR': JSON.stringify(featureMultiQr),
-        'process.env.PORTER_FEATURE_INTERACTIVE_CONTROLS': JSON.stringify(featureInteractiveControls),
-        'process.env.PORTER_FEATURE_SERVE': JSON.stringify(featureServe),
-        'process.env.PORTER_FEATURE_JOIN': JSON.stringify(featureJoin),
+        'process.env.PORTER_FEATURE_BASE64': '"true"',
+        'process.env.PORTER_FEATURE_MULTI_PART_INPUT': '"true"',
+        'process.env.PORTER_FEATURE_INVERT': '"true"',
+        'process.env.PORTER_FEATURE_MULTI_QR': '"true"',
+        'process.env.PORTER_FEATURE_INTERACTIVE_CONTROLS': '"true"',
+        'process.env.PORTER_FEATURE_SERVE': '"true"',
+        'process.env.PORTER_FEATURE_JOIN': '"true"',
       },
     }),
     nodeResolve({
