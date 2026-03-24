@@ -4,7 +4,7 @@ pnpm = "10.30.1"
 
 [tasks.node-install]
 dir = "nodejs"
-run = "pnpm install"
+run = "pnpm install:local"
 
 [tasks.node-build]
 dir = "nodejs"
