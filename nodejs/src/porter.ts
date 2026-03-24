@@ -3,7 +3,6 @@
 import fs from 'fs';
 import path from 'path';
 import tty from 'tty';
-import crypto from 'crypto';
 import { Chunker } from './lib/chunker.js';
 import {
   FEATURE_BASE64,
@@ -20,10 +19,12 @@ import { StateManager } from './lib/state.js';
 // --- Helper: Parse Flags ---
 const args = process.argv.slice(2);
 const flags = Object.fromEntries(
-  args.filter(a => a.startsWith('--')).map(a => {
-    const parts = a.split('=');
-    return [parts[0], parts[1] || 'true'];
-  })
+  args
+    .filter((a) => a.startsWith('--'))
+    .map((a) => {
+      const parts = a.split('=');
+      return [parts[0], parts[1] || 'true'];
+    }),
 );
 
 // --- Subcommand dispatch ---
@@ -35,10 +36,13 @@ if (subcommand === 'serve') {
   }
   const { runReceiver } = await import('./lib/receiver.js');
   const subFlags = Object.fromEntries(
-    args.slice(1).filter(a => a.startsWith('--')).map(a => {
-      const [k, ...rest] = a.slice(2).split('=');
-      return [k, rest.join('=') || 'true'];
-    }),
+    args
+      .slice(1)
+      .filter((a) => a.startsWith('--'))
+      .map((a) => {
+        const [k, ...rest] = a.slice(2).split('=');
+        return [k, rest.join('=') || 'true'];
+      }),
   );
   runReceiver(subFlags);
 } else if (subcommand === 'join') {
@@ -53,8 +57,8 @@ if (subcommand === 'serve') {
 }
 
 function runSender() {
-  const inputFiles = args.filter(a => !a.startsWith('--')); // All non-flag args are files
-  const checksumFile = FEATURE_MULTI_PART_INPUT ? (flags['--verify'] || '') : '';
+  const inputFiles = args.filter((a) => !a.startsWith('--')); // All non-flag args are files
+  const checksumFile = FEATURE_MULTI_PART_INPUT ? flags['--verify'] || '' : '';
   const splitAware = FEATURE_MULTI_PART_INPUT && flags['--split-aware'] === 'true';
 
   // --- Input Handling ---
@@ -69,7 +73,7 @@ function runSender() {
       content = fs.readFileSync(0); // fd 0 is stdin
       fileName = 'stdin-stream';
     } catch (e) {
-      console.error("Error reading from stdin:", e);
+      console.error('Error reading from stdin:', e);
       process.exit(1);
     }
   } else if (inputFiles.length > 0) {
@@ -85,7 +89,7 @@ function runSender() {
       const dir = path.dirname(firstFile) || '.';
       const allFiles = fs.readdirSync(dir);
       const partFiles = allFiles
-        .filter(f => f.includes(baseName) && /\.part(?:\d+|[a-z]{2})$/.test(f))
+        .filter((f) => f.includes(baseName) && /\.part(?:\d+|[a-z]{2})$/.test(f))
         .sort((a, b) => {
           // Handle both numeric (001, 002) and alphabetic (aa, ab, ac) part suffixes
           const numMatchA = a.match(/\.part(\d+)$/);
@@ -119,7 +123,7 @@ function runSender() {
       if (fs.existsSync(checksumPath)) {
         try {
           providedChecksum = fs.readFileSync(checksumPath, 'utf-8').split('  ')[0];
-        } catch (e) {
+        } catch (_e) {
           // Ignore if we can't read it
         }
       }
@@ -135,56 +139,56 @@ function runSender() {
     }
   } else {
     // Config & Usage
-    console.log("\x1b[1mQR DATA PORTER\x1b[0m");
-    console.log("Usage:");
-    console.log("  porter <file> [options]");
-    console.log("  porter <file.part*.txt|file.partaa|...> [options]");
+    console.log('\x1b[1mQR DATA PORTER\x1b[0m');
+    console.log('Usage:');
+    console.log('  porter <file> [options]');
+    console.log('  porter <file.part*.txt|file.partaa|...> [options]');
     console.log("  echo 'data' | porter [options]");
-    console.log("\nOptions:");
+    console.log('\nOptions:');
     if (FEATURE_INTERACTIVE_CONTROLS) {
-      console.log("  --slideshow       Start in slideshow mode");
+      console.log('  --slideshow       Start in slideshow mode');
     } else {
-      console.log("  slideshow-only    This build always starts in slideshow mode");
+      console.log('  slideshow-only    This build always starts in slideshow mode');
     }
     if (FEATURE_BASE64) {
-      console.log("  --base64          Enable Base64 encoding (for binary files)");
+      console.log('  --base64          Enable Base64 encoding (for binary files)');
     }
     if (FEATURE_MULTI_PART_INPUT) {
-      console.log("  --verify=<file>   Verify against SHA256 checksum file");
-      console.log("  --split-aware     Auto-detect and concatenate .part*.txt or .partaa files");
+      console.log('  --verify=<file>   Verify against SHA256 checksum file');
+      console.log('  --split-aware     Auto-detect and concatenate .part*.txt or .partaa files');
     }
     if (FEATURE_INVERT) {
-      console.log("  --invert          Invert QR code colors");
+      console.log('  --invert          Invert QR code colors');
     }
-    console.log("  --ecc=L|M|Q|H     Error correction level (Default: L)");
+    console.log('  --ecc=L|M|Q|H     Error correction level (Default: L)');
     if (FEATURE_MULTI_QR) {
       console.log("  --multi=N|auto    Render N QR codes side-by-side (1-4, or 'auto')");
-      console.log("                    Speeds up transfer: auto-detected or manual");
+      console.log('                    Speeds up transfer: auto-detected or manual');
     }
-    console.log("  --speed=<seconds> QR code delay (Default: 0.5)");
-    console.log("                    0.5 = 2 chunks/sec (default, works everywhere)");
-    console.log("                    0.3 = 3.3 chunks/sec (good lighting)");
-    console.log("                    0.2 = 5 chunks/sec (bright light + steady)");
-    console.log("                    0.1 = 10 chunks/sec (optimal conditions)");
-    console.log("  --buffer=10       Vertical buffer lines");
+    console.log('  --speed=<seconds> QR code delay (Default: 0.5)');
+    console.log('                    0.5 = 2 chunks/sec (default, works everywhere)');
+    console.log('                    0.3 = 3.3 chunks/sec (good lighting)');
+    console.log('                    0.2 = 5 chunks/sec (bright light + steady)');
+    console.log('                    0.1 = 10 chunks/sec (optimal conditions)');
+    console.log('  --buffer=10       Vertical buffer lines');
     if (FEATURE_SERVE) {
-      console.log("");
-      console.log("\x1b[1mSubcommands:\x1b[0m");
-      console.log("  porter serve [--port=8080] [--host=0.0.0.0] [--output-dir=received]");
-      console.log("              Start an HTTP receiver. Accepts QR scan JSON uploads,");
-      console.log("              raw file uploads, and multipart/form-data.");
-      console.log("              Reconstructs multi-part transfers automatically.");
+      console.log('');
+      console.log('\x1b[1mSubcommands:\x1b[0m');
+      console.log('  porter serve [--port=8080] [--host=0.0.0.0] [--output-dir=received]');
+      console.log('              Start an HTTP receiver. Accepts QR scan JSON uploads,');
+      console.log('              raw file uploads, and multipart/form-data.');
+      console.log('              Reconstructs multi-part transfers automatically.');
     }
     if (FEATURE_JOIN) {
-      console.log("  porter join <transfer-dir|id> [--output=<file>] [--force] [--no-verify]");
-      console.log("              Join previously received .partXX files into a single file.");
+      console.log('  porter join <transfer-dir|id> [--output=<file>] [--force] [--no-verify]');
+      console.log('              Join previously received .partXX files into a single file.');
     }
     process.exit(1);
   }
 
   // --- Validation ---
   if (content.length === 0) {
-    console.error("Error: Input is empty.");
+    console.error('Error: Input is empty.');
     process.exit(1);
   }
 
@@ -192,26 +196,30 @@ function runSender() {
   const isSlideshow = FEATURE_INTERACTIVE_CONTROLS ? flags['--slideshow'] === 'true' : true;
   const requestedBase64 = flags['--base64'] === 'true';
   if (requestedBase64 && !FEATURE_BASE64) {
-    console.error("Error: this build was compiled without Base64 support.");
+    console.error('Error: this build was compiled without Base64 support.');
     process.exit(1);
   }
   if ((flags['--verify'] || flags['--split-aware']) && !FEATURE_MULTI_PART_INPUT) {
-    console.error("Error: this build was compiled without multipart input support.");
+    console.error('Error: this build was compiled without multipart input support.');
     process.exit(1);
   }
   if (flags['--invert'] && !FEATURE_INVERT) {
-    console.error("Error: this build was compiled without invert support.");
+    console.error('Error: this build was compiled without invert support.');
     process.exit(1);
   }
   if (flags['--multi'] && !FEATURE_MULTI_QR) {
-    console.error("Error: this build was compiled without multi-QR support.");
+    console.error('Error: this build was compiled without multi-QR support.');
     process.exit(1);
   }
   const useBase64 = FEATURE_BASE64 && requestedBase64;
   const useInverted = FEATURE_INVERT && flags['--invert'] === 'true';
   const speed = parseFloat(flags['--speed']) || 0.5; // Optimized default
   const buffer = parseInt(flags['--buffer']) || 10;
-  const eccLevel = (['L', 'M', 'Q', 'H'].includes(flags['--ecc']) ? flags['--ecc'] : 'L') as 'L'|'M'|'Q'|'H';
+  const eccLevel = (['L', 'M', 'Q', 'H'].includes(flags['--ecc']) ? flags['--ecc'] : 'L') as
+    | 'L'
+    | 'M'
+    | 'Q'
+    | 'H';
 
   // Parse multi-QR option (1-4 codes per frame)
   let multiQr: number | undefined;
@@ -233,8 +241,8 @@ function runSender() {
   if (checksumFile && fs.existsSync(checksumFile)) {
     try {
       providedChecksum = fs.readFileSync(checksumFile, 'utf-8').split('  ')[0];
-    } catch (e) {
-      console.warn("Warning: Could not read checksum file");
+    } catch (_e) {
+      console.warn('Warning: Could not read checksum file');
     }
   }
 
@@ -256,7 +264,7 @@ function runSender() {
     eccLevel,
     currentPart: totalParts > 1 ? 1 : undefined,
     totalParts: totalParts > 1 ? totalParts : undefined,
-    addChecksum: addChecksum
+    addChecksum: addChecksum,
   });
 
   const renderer = new Renderer(fileName, {
@@ -266,7 +274,7 @@ function runSender() {
     eccLevel,
     showPartProgress: totalParts > 1,
     totalParts: totalParts,
-    multiQr
+    multiQr,
   });
 
   renderer.setChunks(chunker.chunks, chunker.version);
@@ -318,8 +326,8 @@ function runSender() {
       try {
         const ttyFd = fs.openSync('/dev/tty', 'r');
         inputStream = new tty.ReadStream(ttyFd);
-      } catch (e) {
-        console.warn("Warning: Could not open /dev/tty. Interactive controls disabled.");
+      } catch (_e) {
+        console.warn('Warning: Could not open /dev/tty. Interactive controls disabled.');
         inputStream = new tty.ReadStream(0);
       }
     } else {
@@ -345,7 +353,7 @@ function runSender() {
         StateManager.saveProgress(fileName, renderer.index);
       } else if (key === 'q' || key === '\u0003') {
         process.stdout.write('\x1b[2J\x1b[H');
-        console.log("Stopped.");
+        console.log('Stopped.');
         StateManager.saveProgress(fileName, renderer.index);
         process.exit();
       } else if (key === 's') {
@@ -382,7 +390,7 @@ function runSender() {
       eccLevel,
       currentPart: totalParts > 1 ? 1 : undefined,
       totalParts: totalParts > 1 ? totalParts : undefined,
-      addChecksum: addChecksum
+      addChecksum: addChecksum,
     });
     renderer.setChunks(chunker.chunks, chunker.version);
     draw();

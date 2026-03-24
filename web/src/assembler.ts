@@ -9,12 +9,12 @@ export interface Transfer {
   total: number;
   mode: ChunkMode;
   chunks: Map<number, Uint8Array>; // 1-based index → decoded bytes
-  checksum?: string;               // expected SHA-256 (from CHECKSUM chunk)
-  seen: Set<number>;               // dedup: indices already received
+  checksum?: string; // expected SHA-256 (from CHECKSUM chunk)
+  seen: Set<number>; // dedup: indices already received
   complete: boolean;
   assembled?: Uint8Array;
-  verified?: boolean;              // true = SHA-256 matched; false = mismatch; undefined = not yet checked
-  checksumMismatch?: boolean;      // true only if verified is false
+  verified?: boolean; // true = SHA-256 matched; false = mismatch; undefined = not yet checked
+  checksumMismatch?: boolean; // true only if verified is false
   error?: string;
   createdAt: number;
   completedAt?: number;
@@ -47,7 +47,7 @@ function parseChunk(raw: string): DataChunk | ChecksumChunk | null {
 
   // CHECKSUM|T|id|sha256
   if (raw.startsWith('CHECKSUM|')) {
-    const p1 = raw.indexOf('|', 9);          // after "CHECKSUM"
+    const p1 = raw.indexOf('|', 9); // after "CHECKSUM"
     const p2 = raw.indexOf('|', p1 + 1);
     if (p1 < 0 || p2 < 0) return null;
     const id = raw.slice(p1 + 1, p2);
@@ -143,7 +143,15 @@ export class Assembler {
   private getOrCreate(id: string, total: number, mode: ChunkMode): Transfer {
     let t = this.transfers.get(id);
     if (!t) {
-      t = { id, total, mode, chunks: new Map(), seen: new Set(), complete: false, createdAt: Date.now() };
+      t = {
+        id,
+        total,
+        mode,
+        chunks: new Map(),
+        seen: new Set(),
+        complete: false,
+        createdAt: Date.now(),
+      };
       this.transfers.set(id, t);
     }
     return t;
@@ -159,22 +167,22 @@ export class Assembler {
     if (t.mode === 'C') {
       // Gzip decompression is async
       concatChunks(t)
-        .then(raw => decompressGzip(raw))
-        .then(decompressed => {
+        .then((raw) => decompressGzip(raw))
+        .then((decompressed) => {
           t.assembled = decompressed;
           verifyChecksum(t, cbs);
         })
-        .catch(err => {
+        .catch((err) => {
           t.error = `Decompression failed: ${err instanceof Error ? err.message : String(err)}`;
           cbs.onComplete?.(t);
         });
     } else {
       concatChunks(t)
-        .then(bytes => {
+        .then((bytes) => {
           t.assembled = bytes;
           verifyChecksum(t, cbs);
         })
-        .catch(err => {
+        .catch((err) => {
           t.error = `Assembly failed: ${err instanceof Error ? err.message : String(err)}`;
           cbs.onComplete?.(t);
         });
@@ -186,23 +194,31 @@ export class Assembler {
 
 async function sha256hex(data: Uint8Array): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
-  return [...new Uint8Array(hashBuffer)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return [...new Uint8Array(hashBuffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function verifyChecksum(t: Transfer, cbs: AssemblerCallbacks): void {
-  if (!t.assembled) { cbs.onComplete?.(t); return; }
-  if (!t.checksum)  { cbs.onComplete?.(t); return; }
-  sha256hex(t.assembled).then(actual => {
-    t.verified = actual.toLowerCase() === t.checksum!.toLowerCase();
-    t.checksumMismatch = !t.verified;
-    if (t.checksumMismatch) {
-      t.error = `SHA-256 mismatch: expected ${t.checksum}, got ${actual}`;
-    }
+  if (!t.assembled) {
     cbs.onComplete?.(t);
-  }).catch(err => {
-    t.error = `SHA-256 computation failed: ${err instanceof Error ? err.message : String(err)}`;
+    return;
+  }
+  if (!t.checksum) {
     cbs.onComplete?.(t);
-  });
+    return;
+  }
+  sha256hex(t.assembled)
+    .then((actual) => {
+      t.verified = actual.toLowerCase() === t.checksum!.toLowerCase();
+      t.checksumMismatch = !t.verified;
+      if (t.checksumMismatch) {
+        t.error = `SHA-256 mismatch: expected ${t.checksum}, got ${actual}`;
+      }
+      cbs.onComplete?.(t);
+    })
+    .catch((err) => {
+      t.error = `SHA-256 computation failed: ${err instanceof Error ? err.message : String(err)}`;
+      cbs.onComplete?.(t);
+    });
 }
 
 function decodePayload(mode: ChunkMode, payload: string): Uint8Array {

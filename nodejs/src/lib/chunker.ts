@@ -1,4 +1,3 @@
-
 import crypto from 'crypto';
 import { getMaxCapacity } from './constants.js';
 import { FEATURE_BASE64 } from './features.js';
@@ -10,9 +9,9 @@ export interface ChunkOptions {
   useBase64: boolean;
   addHeader?: boolean;
   eccLevel?: 'L' | 'M' | 'Q' | 'H';
-  currentPart?: number;      // Which part file (1-indexed)
-  totalParts?: number;       // Total number of part files
-  addChecksum?: boolean;     // Add SHA256 as final chunk
+  currentPart?: number; // Which part file (1-indexed)
+  totalParts?: number; // Total number of part files
+  addChecksum?: boolean; // Add SHA256 as final chunk
 }
 
 export class Chunker {
@@ -50,7 +49,7 @@ export class Chunker {
     // version <= (2 * rows - 17) / 4
 
     // We add margin (-4) to be safe
-    const maxVer = Math.floor(((availableRows * 2) - 17 - 4) / 4);
+    const maxVer = Math.floor((availableRows * 2 - 17 - 4) / 4);
     this.version = Math.max(1, Math.min(40, maxVer));
 
     // Get exact capacity from table based on version and ECC
@@ -62,9 +61,7 @@ export class Chunker {
 
     // If using Base64, source chunk size is smaller due to ~33% overhead
     // base64 size = ceil(n / 3) * 4. So n approx 0.75 * size
-    this.chunkSize = useBase64
-      ? Math.floor(workingCapacity * 0.75)
-      : workingCapacity;
+    this.chunkSize = useBase64 ? Math.floor(workingCapacity * 0.75) : workingCapacity;
 
     if (this.chunkSize <= 0) this.chunkSize = 50; // Safety floor
 
@@ -77,9 +74,7 @@ export class Chunker {
 
     for (let i = 0; i < totalLength; i += this.chunkSize) {
       const chunkBuffer = this.content.subarray(i, i + this.chunkSize);
-      let payload = useBase64
-        ? chunkBuffer.toString('base64')
-        : chunkBuffer.toString('utf8');
+      let payload = useBase64 ? chunkBuffer.toString('base64') : chunkBuffer.toString('utf8');
 
       if (options.addHeader) {
         // We use 1-based index for display/header

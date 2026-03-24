@@ -1,4 +1,3 @@
-
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { Chunker } from './chunker.js';
@@ -11,33 +10,37 @@ test('Chunker splits content correctly', () => {
   chunker.calculateLayout(24, {
     buffer: 10,
     useBase64: false,
-    addHeader: true
+    addHeader: true,
   });
 
   assert.ok(chunker.chunks.length > 0, 'Should create chunks');
 
   // Verify header format
   const firstChunk = chunker.chunks[0];
-  assert.match(firstChunk, /^\d+\|\d+\|[BT]\|..\|/, 'Chunk should start with header index|total|mode|id|');
+  assert.match(
+    firstChunk,
+    /^\d+\|\d+\|[BT]\|..\|/,
+    'Chunk should start with header index|total|mode|id|',
+  );
 });
 
 test('Chunker handles base64', () => {
-    const input = Buffer.from([0, 1, 2, 3, 255]);
-    const chunker = new Chunker(input);
-    // Use larger rows to ensure V1 capacity doesn't split this tiny payload
-    chunker.calculateLayout(40, {
-        buffer: 10,
-        useBase64: true,
-        addHeader: true
-    });
+  const input = Buffer.from([0, 1, 2, 3, 255]);
+  const chunker = new Chunker(input);
+  // Use larger rows to ensure V1 capacity doesn't split this tiny payload
+  chunker.calculateLayout(40, {
+    buffer: 10,
+    useBase64: true,
+    addHeader: true,
+  });
 
-    // Header + Base64
-    const firstChunk = chunker.chunks[0];
-    const parts = firstChunk.split('|');
-    assert.strictEqual(parts.length, 5);
-    assert.match(parts[3], /^..$/, 'Chunk ID should be exactly 2 characters');
+  // Header + Base64
+  const firstChunk = chunker.chunks[0];
+  const parts = firstChunk.split('|');
+  assert.strictEqual(parts.length, 5);
+  assert.match(parts[3], /^..$/, 'Chunk ID should be exactly 2 characters');
 
-    const payload = parts[4];
-    const checkBuf = Buffer.from(payload, 'base64');
-    assert.deepStrictEqual(checkBuf, input);
+  const payload = parts[4];
+  const checkBuf = Buffer.from(payload, 'base64');
+  assert.deepStrictEqual(checkBuf, input);
 });

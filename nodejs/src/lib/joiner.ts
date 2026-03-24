@@ -10,14 +10,6 @@ interface PartEntry {
   fileName: string;
 }
 
-function sha256hex(data: Buffer): string {
-  return crypto.createHash('sha256').update(data).digest('hex');
-}
-
-function chunkFileBase(id: string): string {
-  return id.replace(/[/\\\x00-\x1f]/g, '_').trim() || 'chunk';
-}
-
 function alphaPartSuffix(index: number): string {
   let value = index;
   let suffix = '';
@@ -47,7 +39,7 @@ function scanPartFiles(dir: string, base: string): PartEntry[] {
   results.sort((a, b) => a.index - b.index);
 
   // Report gaps
-  const seen = new Set(results.map(r => r.index));
+  const seen = new Set(results.map((r) => r.index));
   for (let i = 1; i <= max; i++) {
     if (!seen.has(i)) {
       const name = `${base}.part${alphaPartSuffix(i - 1)}`;
@@ -55,7 +47,7 @@ function scanPartFiles(dir: string, base: string): PartEntry[] {
     }
   }
 
-  return results.filter(r => seen.has(r.index));
+  return results.filter((r) => seen.has(r.index));
 }
 
 function loadChecksum(dir: string, base: string): string {
@@ -73,7 +65,7 @@ function resolveTransferDir(target: string): { dir: string; base: string } | nul
 
   // Path to any file inside a transfer directory
   if (fs.existsSync(target) && fs.statSync(target).isFile()) {
-    const dir  = path.dirname(target);
+    const dir = path.dirname(target);
     const base = path.basename(dir);
     return { dir, base };
   }
@@ -95,16 +87,30 @@ export function runJoin(args: string[]): void {
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--output' || a === '-o') { outputFile = args[++i] ?? ''; continue; }
-    if (a === '--force'  || a === '-f') { force = true; continue; }
-    if (a === '--no-verify')            { verify = false; continue; }
-    if (!a.startsWith('-'))             { targets.push(a); continue; }
+    if (a === '--output' || a === '-o') {
+      outputFile = args[++i] ?? '';
+      continue;
+    }
+    if (a === '--force' || a === '-f') {
+      force = true;
+      continue;
+    }
+    if (a === '--no-verify') {
+      verify = false;
+      continue;
+    }
+    if (!a.startsWith('-')) {
+      targets.push(a);
+      continue;
+    }
     console.error(`Unknown join flag: ${a}`);
     process.exit(1);
   }
 
   if (!targets.length) {
-    console.error('Usage: porter join <transfer-dir|file|id> [...] [--output <path>] [--force] [--no-verify]');
+    console.error(
+      'Usage: porter join <transfer-dir|file|id> [...] [--output <path>] [--force] [--no-verify]',
+    );
     process.exit(1);
   }
 
@@ -122,21 +128,22 @@ export function runJoin(args: string[]): void {
       process.exit(1);
     }
 
-    const dest = outputFile
-      ? path.resolve(outputFile)
-      : path.join(dir, `${base}.joined`);
+    const dest = outputFile ? path.resolve(outputFile) : path.join(dir, `${base}.joined`);
 
     if (fs.existsSync(dest) && !force) {
       console.error(`Error: output file already exists: ${dest} (use --force to overwrite)`);
       process.exit(1);
     }
 
-    const totalSize = parts.reduce((sum, p) => sum + fs.statSync(path.join(dir, p.fileName)).size, 0);
+    const totalSize = parts.reduce(
+      (sum, p) => sum + fs.statSync(path.join(dir, p.fileName)).size,
+      0,
+    );
     console.log(`Joining ${parts.length} parts (${totalSize} bytes total) → ${dest}`);
 
     const hash = crypto.createHash('sha256');
-    const tmp  = `${dest}.tmp.${process.pid}`;
-    const fd   = fs.openSync(tmp, 'w');
+    const tmp = `${dest}.tmp.${process.pid}`;
+    const fd = fs.openSync(tmp, 'w');
     try {
       for (const p of parts) {
         const data = fs.readFileSync(path.join(dir, p.fileName));

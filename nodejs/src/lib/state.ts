@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 
 const HIST_FILE = '.porter_history';
@@ -7,11 +6,11 @@ export class StateManager {
   public static saveProgress(fileKey: string, index: number) {
     let hist: Record<string, number> = {};
     if (fs.existsSync(HIST_FILE)) {
-        try {
-            hist = JSON.parse(fs.readFileSync(HIST_FILE, 'utf-8'));
-        } catch (e) {
-            hist = {};
-        }
+      try {
+        hist = JSON.parse(fs.readFileSync(HIST_FILE, 'utf-8'));
+      } catch (_e) {
+        hist = {};
+      }
     }
     hist[fileKey] = index;
     fs.writeFileSync(HIST_FILE, JSON.stringify(hist));
@@ -24,7 +23,7 @@ export class StateManager {
         if (typeof history[fileKey] === 'number') {
           return history[fileKey];
         }
-      } catch (e) {
+      } catch (_e) {
         // ignore corruption
       }
     }

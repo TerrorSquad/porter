@@ -105,8 +105,13 @@ function withTransferLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
   const key = chunkFileBase(id);
   const prev = transferLocks.get(key) ?? Promise.resolve();
   let release!: () => void;
-  const slot = new Promise<void>(r => { release = r; });
-  transferLocks.set(key, prev.then(() => slot));
+  const slot = new Promise<void>((r) => {
+    release = r;
+  });
+  transferLocks.set(
+    key,
+    prev.then(() => slot),
+  );
   return prev.then(() => fn()).finally(release);
 }
 
@@ -122,8 +127,8 @@ function tryParseQRScanUpload(body: Buffer): QRScanUpload | null {
   try {
     const obj = JSON.parse(s) as Record<string, unknown>;
     const content = typeof obj.content === 'string' ? obj.content : '';
-    const raw     = typeof obj.raw     === 'string' ? obj.raw     : '';
-    const format  = typeof obj.format  === 'string' ? obj.format  : '';
+    const raw = typeof obj.raw === 'string' ? obj.raw : '';
+    const format = typeof obj.format === 'string' ? obj.format : '';
     if (!content.trim() && !raw.trim()) return null;
     if (format.trim() && normalizeFormat(format.trim()) !== 'QRCODE') return null;
     return { content, raw, format };
@@ -157,17 +162,21 @@ function parseQRChunk(raw: Buffer): QRChunkUpload | null {
   }
 
   // index|total|mode|id|payload  (payload may contain '|')
-  const p1 = s.indexOf('|'); if (p1 < 0) return null;
-  const p2 = s.indexOf('|', p1 + 1); if (p2 < 0) return null;
-  const p3 = s.indexOf('|', p2 + 1); if (p3 < 0) return null;
-  const p4 = s.indexOf('|', p3 + 1); if (p4 < 0) return null;
+  const p1 = s.indexOf('|');
+  if (p1 < 0) return null;
+  const p2 = s.indexOf('|', p1 + 1);
+  if (p2 < 0) return null;
+  const p3 = s.indexOf('|', p2 + 1);
+  if (p3 < 0) return null;
+  const p4 = s.indexOf('|', p3 + 1);
+  if (p4 < 0) return null;
 
   const index = parseInt(s.slice(0, p1), 10);
   if (!Number.isInteger(index) || index < 1) return null;
   const total = parseInt(s.slice(p1 + 1, p2), 10);
   if (!Number.isInteger(total) || total < 1) return null;
   const mode = s.slice(p2 + 1, p3);
-  const id   = s.slice(p3 + 1, p4);
+  const id = s.slice(p3 + 1, p4);
   if (!validateChunkID(id)) return null;
   const payloadStr = s.slice(p4 + 1);
 
@@ -189,7 +198,10 @@ function sha256hex(data: Buffer): string {
   return crypto.createHash('sha256').update(data).digest('hex');
 }
 
-function scanPartFiles(transferDir: string, base: string): { parts: Map<number, string>; maxIndex: number } {
+function scanPartFiles(
+  transferDir: string,
+  base: string,
+): { parts: Map<number, string>; maxIndex: number } {
   const parts = new Map<number, string>();
   let maxIndex = 0;
   if (!fs.existsSync(transferDir)) return { parts, maxIndex };
@@ -215,9 +227,15 @@ function loadManifest(outputDir: string, id: string): TransferManifest {
     return m;
   } catch {
     return {
-      id: chunkFileBase(id), directory: chunkFileBase(id),
-      totalParts: 0, receivedParts: 0, missingParts: [], partFiles: [],
-      checksumVerified: false, complete: false, updatedAt: new Date().toISOString(),
+      id: chunkFileBase(id),
+      directory: chunkFileBase(id),
+      totalParts: 0,
+      receivedParts: 0,
+      missingParts: [],
+      partFiles: [],
+      checksumVerified: false,
+      complete: false,
+      updatedAt: new Date().toISOString(),
     };
   }
 }
@@ -249,20 +267,26 @@ function buildManifest(outputDir: string, id: string, totalHint: number): Transf
   }
 
   return {
-    id: base, directory: base,
-    totalParts: total, receivedParts: parts.size,
-    missingParts: missing, partFiles: sortedParts,
-    checksum: checksum || undefined, checksumFile: checksumFileName || undefined,
+    id: base,
+    directory: base,
+    totalParts: total,
+    receivedParts: parts.size,
+    missingParts: missing,
+    partFiles: sortedParts,
+    checksum: checksum || undefined,
+    checksumFile: checksumFileName || undefined,
     joinedFile: complete ? `${base}.joined` : undefined,
     joinedSHA256: joinedSHA256 || undefined,
-    checksumVerified: complete && !!checksum && checksum.toLowerCase() === joinedSHA256.toLowerCase(),
-    complete, updatedAt: new Date().toISOString(),
+    checksumVerified:
+      complete && !!checksum && checksum.toLowerCase() === joinedSHA256.toLowerCase(),
+    complete,
+    updatedAt: new Date().toISOString(),
   };
 }
 
 function writeManifest(outputDir: string, id: string, manifest: TransferManifest): void {
   const dest = transferManifestPath(outputDir, id);
-  const tmp  = `${dest}.tmp.${process.pid}`;
+  const tmp = `${dest}.tmp.${process.pid}`;
   fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
   fs.renameSync(tmp, dest);
 }
@@ -270,7 +294,7 @@ function writeManifest(outputDir: string, id: string, manifest: TransferManifest
 function autoJoin(outputDir: string, manifest: TransferManifest): string {
   if (!manifest.complete || !manifest.partFiles.length) return '';
   const transferDir = transferDirectory(outputDir, manifest.id);
-  const joinedPath  = transferJoinPath(outputDir, manifest.id);
+  const joinedPath = transferJoinPath(outputDir, manifest.id);
   if (fs.existsSync(joinedPath)) return joinedPath;
 
   const hash = crypto.createHash('sha256');
@@ -323,14 +347,24 @@ async function storeQRChunk(outputDir: string, chunk: QRChunkUpload): Promise<Up
       const manifest = buildManifest(outputDir, chunk.id, Math.max(chunk.total, prev.totalParts));
       let joinedPath = '';
       if (manifest.complete) {
-        try { joinedPath = autoJoin(outputDir, manifest); } catch { /* logged above */ }
+        try {
+          joinedPath = autoJoin(outputDir, manifest);
+        } catch {
+          /* logged above */
+        }
       }
       writeManifest(outputDir, chunk.id, manifest);
       return {
-        fileName, path: fullPath, size: content.length,
-        duplicate: true, existingPath: fullPath, sha256: chunkHash,
-        transferId: manifest.id, manifestPath: transferManifestPath(outputDir, chunk.id),
-        complete: manifest.complete, verified: manifest.checksumVerified,
+        fileName,
+        path: fullPath,
+        size: content.length,
+        duplicate: true,
+        existingPath: fullPath,
+        sha256: chunkHash,
+        transferId: manifest.id,
+        manifestPath: transferManifestPath(outputDir, chunk.id),
+        complete: manifest.complete,
+        verified: manifest.checksumVerified,
         joinedPath: joinedPath || undefined,
       };
     }
@@ -342,16 +376,23 @@ async function storeQRChunk(outputDir: string, chunk: QRChunkUpload): Promise<Up
     const manifest = buildManifest(outputDir, chunk.id, Math.max(chunk.total, prev.totalParts));
     let joinedPath = '';
     if (manifest.complete) {
-      try { joinedPath = autoJoin(outputDir, manifest); } catch (e) {
+      try {
+        joinedPath = autoJoin(outputDir, manifest);
+      } catch (e) {
         console.error(`Auto-join failed: ${e instanceof Error ? e.message : e}`);
       }
     }
     writeManifest(outputDir, chunk.id, manifest);
 
     return {
-      fileName, path: fullPath, size: content.length, sha256: chunkHash,
-      transferId: manifest.id, manifestPath: transferManifestPath(outputDir, chunk.id),
-      complete: manifest.complete, verified: manifest.checksumVerified,
+      fileName,
+      path: fullPath,
+      size: content.length,
+      sha256: chunkHash,
+      transferId: manifest.id,
+      manifestPath: transferManifestPath(outputDir, chunk.id),
+      complete: manifest.complete,
+      verified: manifest.checksumVerified,
       joinedPath: joinedPath || undefined,
     };
   });
@@ -359,7 +400,12 @@ async function storeQRChunk(outputDir: string, chunk: QRChunkUpload): Promise<Up
 
 // ── Raw / multipart upload storage ───────────────────────────────────────────
 
-function findDuplicateByHash(outputDir: string, checksum: string, size: number, ignorePath: string): string {
+function findDuplicateByHash(
+  outputDir: string,
+  checksum: string,
+  size: number,
+  ignorePath: string,
+): string {
   for (const entry of fs.readdirSync(outputDir, { withFileTypes: true })) {
     if (entry.isDirectory()) continue;
     const candidate = path.join(outputDir, entry.name);
@@ -371,7 +417,7 @@ function findDuplicateByHash(outputDir: string, checksum: string, size: number, 
 }
 
 function uniqueDestination(dir: string, name: string): string {
-  const ext  = path.extname(name);
+  const ext = path.extname(name);
   const base = name.slice(0, name.length - ext.length) || 'upload';
   let candidate = path.join(dir, name);
   if (!fs.existsSync(candidate)) return candidate;
@@ -383,11 +429,14 @@ function uniqueDestination(dir: string, name: string): string {
 
 function fallbackFileName(name: string, contentType: string): string {
   if (name) return name;
-  const ts  = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
-  const ext = contentType.startsWith('image/jpeg') ? '.jpg'
-            : contentType.startsWith('image/png')  ? '.png'
-            : contentType.startsWith('text/')       ? '.txt'
-            : '.bin';
+  const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
+  const ext = contentType.startsWith('image/jpeg')
+    ? '.jpg'
+    : contentType.startsWith('image/png')
+      ? '.png'
+      : contentType.startsWith('text/')
+        ? '.txt'
+        : '.bin';
   return `upload-${ts}${ext}`;
 }
 
@@ -421,7 +470,7 @@ async function storeRawUpload(req: http.IncomingMessage, outputDir: string): Pro
 
   const qrScan = tryParseQRScanUpload(body);
   if (qrScan) {
-    const raw   = qrScanBytes(qrScan);
+    const raw = qrScanBytes(qrScan);
     const chunk = parseQRChunk(raw);
     if (!chunk) throw new Error('Invalid QR chunk format');
     return storeQRChunk(outputDir, chunk);
@@ -439,7 +488,14 @@ async function storeRawUpload(req: http.IncomingMessage, outputDir: string): Pro
   if (dup) {
     fs.unlinkSync(tmp);
     console.log(`Skipped duplicate upload (matches ${dup})`);
-    return { fileName: path.basename(dup), path: dup, size: body.length, duplicate: true, existingPath: dup, sha256: checksum };
+    return {
+      fileName: path.basename(dup),
+      path: dup,
+      size: body.length,
+      duplicate: true,
+      existingPath: dup,
+      sha256: checksum,
+    };
   }
   const dest = uniqueDestination(outputDir, fileName);
   fs.renameSync(tmp, dest);
@@ -447,7 +503,10 @@ async function storeRawUpload(req: http.IncomingMessage, outputDir: string): Pro
   return { fileName: path.basename(dest), path: dest, size: body.length, sha256: checksum };
 }
 
-async function storeMultipartUpload(req: http.IncomingMessage, outputDir: string): Promise<UploadResult> {
+async function storeMultipartUpload(
+  req: http.IncomingMessage,
+  outputDir: string,
+): Promise<UploadResult> {
   const ct = req.headers['content-type'] ?? '';
   const bm = ct.match(/boundary=([^\s;]+)/);
   if (!bm) throw new Error('No boundary in multipart Content-Type');
@@ -467,7 +526,10 @@ async function storeMultipartUpload(req: http.IncomingMessage, outputDir: string
     if (headerEnd < 0) break;
     const headerStr = body.slice(offset, headerEnd).toString('utf8');
     const fnMatch = headerStr.match(/filename="?([^";\r\n]+)"?/i);
-    if (!fnMatch) { offset = headerEnd + 4; continue; }
+    if (!fnMatch) {
+      offset = headerEnd + 4;
+      continue;
+    }
 
     const partSlice = body.slice(headerEnd + 4);
     const nextBound = partSlice.indexOf(sep);
@@ -480,7 +542,14 @@ async function storeMultipartUpload(req: http.IncomingMessage, outputDir: string
     const dup = findDuplicateByHash(outputDir, checksum, data.length, tmp);
     if (dup) {
       fs.unlinkSync(tmp);
-      return { fileName: path.basename(dup), path: dup, size: data.length, duplicate: true, existingPath: dup, sha256: checksum };
+      return {
+        fileName: path.basename(dup),
+        path: dup,
+        size: data.length,
+        duplicate: true,
+        existingPath: dup,
+        sha256: checksum,
+      };
     }
     const dest = uniqueDestination(outputDir, fileName);
     fs.renameSync(tmp, dest);
@@ -515,8 +584,8 @@ function setCORSHeaders(res: http.ServerResponse): void {
 }
 
 export function runReceiver(flags: Record<string, string>): void {
-  const host      = flags['host']?.trim()       || '0.0.0.0';
-  const port      = parseInt(flags['port']?.trim() || '8080', 10);
+  const host = flags['host']?.trim() || '0.0.0.0';
+  const port = parseInt(flags['port']?.trim() || '8080', 10);
   const outputDir = path.resolve(flags['output-dir']?.trim() || 'received');
 
   fs.mkdirSync(outputDir, { recursive: true });
@@ -526,7 +595,9 @@ export function runReceiver(flags: Record<string, string>): void {
     setCORSHeaders(res);
 
     if (req.method === 'OPTIONS') {
-      res.writeHead(204); res.end(); return;
+      res.writeHead(204);
+      res.end();
+      return;
     }
 
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -535,18 +606,20 @@ export function runReceiver(flags: Record<string, string>): void {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end(
         `Porter receiver is running.\n\nPOST raw bytes to /upload?filename=name.bin\n` +
-        `Or send multipart/form-data with a file field to /upload\n\n` +
-        `Duplicate uploads are skipped automatically based on file content.\n` +
-        `QR scan JSON uploads are unpacked into transfer directories like <id>/<id>.partaa and <id>/<id>.meta.json.\n` +
-        `When a transfer is complete, Porter auto-joins it and writes <id>/<id>.joined.\n` +
-        `Saving uploads to: ${outputDir}\n`,
+          `Or send multipart/form-data with a file field to /upload\n\n` +
+          `Duplicate uploads are skipped automatically based on file content.\n` +
+          `QR scan JSON uploads are unpacked into transfer directories like <id>/<id>.partaa and <id>/<id>.meta.json.\n` +
+          `When a transfer is complete, Porter auto-joins it and writes <id>/<id>.joined.\n` +
+          `Saving uploads to: ${outputDir}\n`,
       );
       return;
     }
 
     if (url.pathname === '/upload') {
       if (req.method !== 'POST') {
-        res.writeHead(405, { 'Content-Type': 'text/plain' }); res.end('POST required'); return;
+        res.writeHead(405, { 'Content-Type': 'text/plain' });
+        res.end('POST required');
+        return;
       }
       try {
         const ct = req.headers['content-type'] ?? '';
@@ -564,7 +637,8 @@ export function runReceiver(flags: Record<string, string>): void {
       return;
     }
 
-    res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found');
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
   });
 
   server.listen(port, host === '0.0.0.0' ? undefined : host, () => {
@@ -576,7 +650,11 @@ export function runReceiver(flags: Record<string, string>): void {
     console.log(`  curl -F file=@photo.jpg http://127.0.0.1:${port}/upload`);
   });
 
-  const shutdown = () => server.close(() => { console.log('Receiver stopped.'); process.exit(0); });
-  process.on('SIGINT',  shutdown);
+  const shutdown = () =>
+    server.close(() => {
+      console.log('Receiver stopped.');
+      process.exit(0);
+    });
+  process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }

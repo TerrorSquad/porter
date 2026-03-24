@@ -1,4 +1,3 @@
-
 import qrcode from 'qrcode-generator';
 import { FEATURE_INTERACTIVE_CONTROLS, FEATURE_INVERT, FEATURE_MULTI_QR } from './features.js';
 
@@ -11,14 +10,18 @@ function repeatCell(cell: string, count: number): string {
   return count > 0 ? cell.repeat(count) : '';
 }
 
-function buildQrLines(payload: string, eccLevel: 'L' | 'M' | 'Q' | 'H', useInverted: boolean): string[] {
+function buildQrLines(
+  payload: string,
+  eccLevel: 'L' | 'M' | 'Q' | 'H',
+  useInverted: boolean,
+): string[] {
   const qr = qrcode(0, eccLevel);
   qr.addData(payload, 'Byte');
   qr.make();
 
   const moduleCount = qr.getModuleCount();
   const rows: boolean[][] = Array.from({ length: moduleCount }, (_, row) =>
-    Array.from({ length: moduleCount }, (_, col) => qr.isDark(row, col))
+    Array.from({ length: moduleCount }, (_, col) => qr.isDark(row, col)),
   );
 
   if (moduleCount % 2 === 1) {
@@ -60,7 +63,7 @@ function buildQrLines(payload: string, eccLevel: 'L' | 'M' | 'Q' | 'H', useInver
     return lines;
   }
 
-  return lines.map(line => `\x1b[7m${line}\x1b[0m`);
+  return lines.map((line) => `\x1b[7m${line}\x1b[0m`);
 }
 
 export interface RenderOptions {
@@ -96,12 +99,12 @@ export class Renderer {
   }
 
   public moveNext() {
-    const step = FEATURE_MULTI_QR ? (this.options.multiQr || 1) : 1;
+    const step = FEATURE_MULTI_QR ? this.options.multiQr || 1 : 1;
     this.index = Math.min(this.chunks.length - 1, this.index + step);
   }
 
   public movePrev() {
-    const step = FEATURE_MULTI_QR ? (this.options.multiQr || 1) : 1;
+    const step = FEATURE_MULTI_QR ? this.options.multiQr || 1 : 1;
     this.index = Math.max(0, this.index - step);
   }
 
@@ -124,11 +127,16 @@ export class Renderer {
     }
 
     // Determine how many QR codes to render (multiQr mode)
-    const multiQr = FEATURE_MULTI_QR ? (this.options.multiQr || 1) : 1;
+    const multiQr = FEATURE_MULTI_QR ? this.options.multiQr || 1 : 1;
     const codesToRender = Math.min(multiQr, this.chunks.length - this.index);
     const qrIndices = Array.from({ length: codesToRender }, (_, i) => this.index + i);
 
-    const qrDataList: Array<{ lines: string[]; height: number; payload: string; isChecksum: boolean }> = [];
+    const qrDataList: Array<{
+      lines: string[];
+      height: number;
+      payload: string;
+      isChecksum: boolean;
+    }> = [];
     let maxQrHeight = 0;
 
     for (const idx of qrIndices) {
@@ -156,7 +164,10 @@ export class Renderer {
     this.renderMultiQr(qrDataList, maxQrHeight);
   }
 
-  private renderMultiQr(qrDataList: Array<{ lines: string[]; height: number; payload: string; isChecksum: boolean }>, maxQrHeight: number) {
+  private renderMultiQr(
+    qrDataList: Array<{ lines: string[]; height: number; payload: string; isChecksum: boolean }>,
+    maxQrHeight: number,
+  ) {
     // Check for minimum screen size
     const minWidth = 40;
     const minHeight = 24;
@@ -166,7 +177,9 @@ export class Renderer {
     if (termWidth < minWidth || termHeight < minHeight) {
       process.stdout.write('\x1b[H\x1b[2J');
       process.stdout.write('\x1b[1;31mError: Terminal too small\x1b[0m\n');
-      process.stdout.write(`Current: ${termWidth}×${termHeight}, Minimum: ${minWidth}×${minHeight}\n`);
+      process.stdout.write(
+        `Current: ${termWidth}×${termHeight}, Minimum: ${minWidth}×${minHeight}\n`,
+      );
       return;
     }
 
@@ -208,20 +221,26 @@ export class Renderer {
 
       // Prepare Sidebar Content (positioned after all QR codes)
       const lastQrWidth = qrDataList[qrDataList.length - 1]?.lines?.[0]?.length || 0;
-      const sidebarCol = Math.min(colPositions[qrDataList.length - 1] + lastQrWidth + 4, termWidth - 30);
+      const sidebarCol = Math.min(
+        colPositions[qrDataList.length - 1] + lastQrWidth + 4,
+        termWidth - 30,
+      );
       let sidebarText = '';
 
       if (i === 1) sidebarText = `\x1b[1;36m📄 FILE: \x1b[0m${this.fileName}`;
       if (i === 2) {
-        const multiStr = FEATURE_MULTI_QR && qrDataList.length > 1 ? ` (×${qrDataList.length})` : '';
+        const multiStr =
+          FEATURE_MULTI_QR && qrDataList.length > 1 ? ` (×${qrDataList.length})` : '';
         const endChunk = Math.min(this.index + qrDataList.length, this.chunks.length);
-        const chunkRange = qrDataList.length > 1 ? `${this.index + 1}–${endChunk}` : `${this.index + 1}`;
+        const chunkRange =
+          qrDataList.length > 1 ? `${this.index + 1}–${endChunk}` : `${this.index + 1}`;
         sidebarText = `\x1b[1;32m📦 CHUNK:\x1b[0m ${chunkRange} / ${this.chunks.length}${multiStr}`;
       }
       if (i === 3) sidebarText = `\x1b[1;32m📊 PROG: \x1b[0m${progress}%`;
 
       if (i === 5) sidebarText = `\x1b[1;33m📏 VER:  \x1b[0m${this.version}`;
-      if (i === 6) sidebarText = `\x1b[1;33m⏳ ETA:  \x1b[0m${Math.round((this.chunks.length - this.index) * this.options.speed)}s`;
+      if (i === 6)
+        sidebarText = `\x1b[1;33m⏳ ETA:  \x1b[0m${Math.round((this.chunks.length - this.index) * this.options.speed)}s`;
       if (i === 7) {
         if (primary.isChecksum) {
           sidebarText = `\x1b[1;35m✓ CHECKSUM\x1b[0m`;
@@ -231,7 +250,7 @@ export class Renderer {
       }
 
       if (FEATURE_INTERACTIVE_CONTROLS) {
-        if (i === 9)  sidebarText = `\x1b[1;34m🕹️  CONTROLS:\x1b[0m`;
+        if (i === 9) sidebarText = `\x1b[1;34m🕹️  CONTROLS:\x1b[0m`;
         if (i === 10) sidebarText = `   Next:  \x1b[7m L \x1b[0m or \x1b[7m → \x1b[0m`;
         if (i === 11) sidebarText = `   Back:  \x1b[7m H \x1b[0m or \x1b[7m ← \x1b[0m`;
         if (i === 12) sidebarText = `   Auto:  \x1b[7m S \x1b[0m (Toggle)`;
@@ -242,7 +261,7 @@ export class Renderer {
         if (this.options.isSlideshow) {
           sidebarText = `\x1b[5;31m● STREAMING ACTIVE\x1b[0m`;
         } else {
-           sidebarText = '';
+          sidebarText = '';
         }
       }
 

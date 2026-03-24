@@ -27,7 +27,21 @@
           "args": ["--write", "--ignore-unknown", "--cache"],
           "type": "node",
           "stagesFilesAfter": true,
-          "extensions": [".js", ".jsx", ".ts", ".tsx", ".vue", ".mjs", ".cjs", ".json", ".md", ".yml", ".yaml", ".css", ".scss"],
+          "extensions": [
+            ".js",
+            ".jsx",
+            ".ts",
+            ".tsx",
+            ".vue",
+            ".mjs",
+            ".cjs",
+            ".json",
+            ".md",
+            ".yml",
+            ".yaml",
+            ".css",
+            ".scss"
+          ],
           "group": "format"
         },
         "Stylelint": {
