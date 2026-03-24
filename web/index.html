@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Porter Receiver</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <header class="top-bar">
+    <span class="logo">▣ Porter Receiver</span>
+    <span class="hud">
+      scanned <span id="hud-total" class="hud-num">0</span>
+      &nbsp;·&nbsp;
+      new <span id="hud-new" class="hud-num hud-green">0</span>
+      &nbsp;·&nbsp;
+      dupes <span id="hud-dupes" class="hud-num hud-dim">0</span>
+    </span>
+    <div class="relay-bar">
+      <label for="relay-url" class="relay-label">Go receiver</label>
+      <input id="relay-url" class="relay-input" type="url"
+             placeholder="http://localhost:8080  (optional)"
+             autocomplete="off" spellcheck="false" />
+      <span id="relay-status" class="relay-status" aria-live="polite"></span>
+    </div>
+    <button id="btn-reset-all" class="btn-ghost">Reset all</button>
+  </header>
+
+  <main class="layout">
+
+    <!-- ── Left: camera + drop zone ── -->
+    <section class="left-panel">
+
+      <div class="camera-wrap" id="camera-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <!-- scan-canvas is hidden; used only for jsQR pixel access -->
+        <canvas id="scan-canvas" aria-hidden="true"></canvas>
+        <!-- Overlay: shown while camera is idle -->
+        <div class="cam-idle" id="cam-idle">
+          <div class="idle-icon">▣</div>
+          <div class="idle-text">Camera not started</div>
+        </div>
+        <!-- Flash ring: briefly shown on each new unique chunk -->
+        <div class="scan-flash" id="scan-flash" aria-hidden="true"></div>
+      </div>
+
+      <div class="cam-controls">
+        <button id="btn-start" class="btn-primary">▶ Start camera</button>
+        <button id="btn-stop"  class="btn-secondary" disabled>■ Stop</button>
+      </div>
+
+      <!-- Image file drop / browse -->
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept="image/*" multiple />
+        <label for="file-input" class="drop-label">
+          <span class="drop-icon">⊕</span>
+          <span>Drop QR images or <strong>browse files</strong></span>
+          <span class="drop-hint">PNG · JPG — each image scanned for a QR code</span>
+        </label>
+      </div>
+
+    </section>
+
+    <!-- ── Right: transfers ── -->
+    <section class="right-panel">
+      <h2 class="panel-title">Transfers</h2>
+      <div id="transfers-list">
+        <div class="empty-state">
+          <div class="empty-icon">▣</div>
+          <div>No transfers yet.</div>
+          <div class="empty-hint">Start the camera or drop QR images.</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
