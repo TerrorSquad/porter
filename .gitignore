@@ -34,3 +34,4 @@ psalm_sonar.json
 .vscode/settings.json
 .ddev/homeadditions/.gitconfig
 .deptrac.cache
+.eslintcache
