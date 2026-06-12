@@ -1,0 +1,5 @@
+
+[[rule]]
+name = "forge"
+include = ["**/forge.toml"]
+url = "file:./.forge/forge.schema.json"

@@ -1,0 +1,43 @@
+# Migrated from .git-hooks.config.json
+# Review and adjust as needed.
+
+[hooks.pre-commit]
+enabled = true
+
+[hooks.pre-commit.tools.eslint]
+command = "eslint"
+args = ["--fix", "--cache", "--no-warn-ignored"]
+type = "node"
+group = "lint"
+extensions = [".js", ".jsx", ".ts", ".tsx", ".vue", ".mjs", ".cjs"]
+restage = true
+
+[hooks.pre-commit.tools.prettier]
+command = "prettier"
+args = ["--write", "--ignore-unknown", "--cache"]
+type = "node"
+group = "format"
+extensions = [".js", ".jsx", ".ts", ".tsx", ".vue", ".mjs", ".cjs", ".json", ".md", ".yml", ".yaml", ".css", ".scss"]
+restage = true
+
+[hooks.pre-commit.tools.stylelint]
+command = "stylelint"
+args = ["--fix", "--allow-empty-input", "--cache"]
+type = "node"
+group = "lint"
+extensions = [".vue", ".css", ".scss", ".sass", ".less"]
+restage = true
+
+[hooks.pre-commit.tools.typescript]
+command = "tsc"
+args = ["--noEmit", "--skipLibCheck"]
+type = "node"
+group = "lint"
+extensions = [".ts", ".tsx"]
+pass_files = false
+
+[hooks.pre-commit.tools.markdownlint]
+command = "markdownlint-cli2"
+type = "node"
+group = "lint"
+extensions = [".md"]
