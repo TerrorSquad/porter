@@ -138,6 +138,10 @@ class _ScanningScreenState extends State<ScanningScreen> {
       setState(() {
         controller = next;
       });
+      // Wait for the rebuilt MobileScanner widget to attach to `next`,
+      // otherwise controller.start() below races that attach and can
+      // time out with a controllerNotAttached error.
+      await WidgetsBinding.instance.endOfFrame;
     } else {
       controller = next;
     }
