@@ -36,8 +36,11 @@ class ScannerProvider extends ChangeNotifier {
   Map<String, Transfer> get allTransfers => assembler.transfers;
 
   /// QR codes processed per second, averaged over the last [_rateWindow].
-  double get scansPerSecond =>
-      _recentScans.length / _rateWindow.inSeconds;
+  double get scansPerSecond {
+    final now = DateTime.now();
+    _recentScans.removeWhere((t) => now.difference(t) > _rateWindow);
+    return _recentScans.length / _rateWindow.inSeconds;
+  }
 
   /// Payload bytes received per second, averaged over the last [_rateWindow].
   double get bytesPerSecond {
