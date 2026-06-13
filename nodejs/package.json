@@ -12,7 +12,7 @@
     "build:standalone": "OUTPUT_FILE=dist/porter.standalone.mjs pnpm run build:rollup && chmod +x dist/porter.standalone.mjs",
     "install:local": "pnpm run build:standalone && cp dist/porter.standalone.mjs ~/.local/bin/porter && chmod +x ~/.local/bin/porter",
     "size:report": "node scripts/report-sizes.mjs",
-    "test": "tsx src/lib/chunker.test.ts"
+    "test": "tsx --test src/lib/*.test.ts"
   },
   "keywords": [],
   "author": "",
