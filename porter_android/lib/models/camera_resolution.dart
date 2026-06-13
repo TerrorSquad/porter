@@ -29,6 +29,19 @@ extension CameraResolutionPresetX on CameraResolutionPreset {
     }
   }
 
+  /// Whether the preview should be cropped to a 1:1 square. Real cameras
+  /// rarely have a native square sensor format, so "square" presets request
+  /// the closest matching resolution and the UI crops the preview to 1:1.
+  bool get isSquare {
+    switch (this) {
+      case CameraResolutionPreset.square720:
+      case CameraResolutionPreset.square1080:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   String get label {
     switch (this) {
       case CameraResolutionPreset.p480:

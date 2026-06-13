@@ -237,11 +237,22 @@ class _ScanningScreenState extends State<ScanningScreen> {
           return Column(
             children: [
               Expanded(
-                child: MobileScanner(
-                  key: ValueKey(controller),
-                  controller: controller,
-                  onDetect: _handleQRDetected,
-                ),
+                child: _activeResolution.isSquare
+                    ? Center(
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: MobileScanner(
+                            key: ValueKey(controller),
+                            controller: controller,
+                            onDetect: _handleQRDetected,
+                          ),
+                        ),
+                      )
+                    : MobileScanner(
+                        key: ValueKey(controller),
+                        controller: controller,
+                        onDetect: _handleQRDetected,
+                      ),
               ),
               Container(
                 color: Colors.black87,
