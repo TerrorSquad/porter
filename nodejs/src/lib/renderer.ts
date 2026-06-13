@@ -109,12 +109,18 @@ export class Renderer {
   }
 
   public draw() {
+    // Build the whole frame in memory and flush it with a single write.
+    // Writing line-by-line lets the terminal repaint mid-frame, which a
+    // camera can capture as a torn/half-updated QR code and fail to decode.
+    const out: string[] = [];
+
     // Just go home without clearing to avoid flashing
     // Lines will be cleared as they're overwritten
-    process.stdout.write('\x1b[H');
+    out.push('\x1b[H');
 
     if (!this.chunks.length || !this.chunks[this.index]) {
-      process.stdout.write('\x1b[2KNo content to display.\n');
+      out.push('\x1b[2KNo content to display.\n');
+      process.stdout.write(out.join(''));
       return;
     }
 
@@ -122,7 +128,7 @@ export class Renderer {
     // Only do this if we have previous height data
     if (this.lastHeight > 0) {
       for (let i = 0; i < this.lastHeight; i++) {
-        process.stdout.write(`\x1b[${i + 1};1H\x1b[2K`);
+        out.push(`\x1b[${i + 1};1H\x1b[2K`);
       }
     }
 
@@ -154,20 +160,24 @@ export class Renderer {
           isChecksum: payload.startsWith('CHECKSUM|'),
         });
       } catch (e) {
-        process.stdout.write('\x1b[2J\x1b[H');
-        process.stdout.write('\x1b[1;31mError generating QR code:\x1b[0m\n');
-        process.stdout.write(`${e}\n`);
+        out.push('\x1b[2J\x1b[H');
+        out.push('\x1b[1;31mError generating QR code:\x1b[0m\n');
+        out.push(`${e}\n`);
+        process.stdout.write(out.join(''));
         return;
       }
     }
 
-    this.renderMultiQr(qrDataList, maxQrHeight);
+    out.push(this.renderMultiQr(qrDataList, maxQrHeight));
+    process.stdout.write(out.join(''));
   }
 
   private renderMultiQr(
     qrDataList: Array<{ lines: string[]; height: number; payload: string; isChecksum: boolean }>,
     maxQrHeight: number,
-  ) {
+  ): string {
+    const out: string[] = [];
+
     // Check for minimum screen size
     const minWidth = 40;
     const minHeight = 24;
@@ -175,20 +185,18 @@ export class Renderer {
     const termHeight = process.stdout.rows || 24;
 
     if (termWidth < minWidth || termHeight < minHeight) {
-      process.stdout.write('\x1b[H\x1b[2J');
-      process.stdout.write('\x1b[1;31mError: Terminal too small\x1b[0m\n');
-      process.stdout.write(
-        `Current: ${termWidth}×${termHeight}, Minimum: ${minWidth}×${minHeight}\n`,
-      );
-      return;
+      out.push('\x1b[H\x1b[2J');
+      out.push('\x1b[1;31mError: Terminal too small\x1b[0m\n');
+      out.push(`Current: ${termWidth}×${termHeight}, Minimum: ${minWidth}×${minHeight}\n`);
+      return out.join('');
     }
 
     // Safely get QR width with fallback
     const firstLine = qrDataList[0]?.lines?.[0];
     if (!firstLine) {
-      process.stdout.write('\x1b[H\x1b[2J');
-      process.stdout.write('\x1b[1;31mError: Failed to generate QR code\x1b[0m\n');
-      return;
+      out.push('\x1b[H\x1b[2J');
+      out.push('\x1b[1;31mError: Failed to generate QR code\x1b[0m\n');
+      return out.join('');
     }
 
     const sidebarHeight = FEATURE_INTERACTIVE_CONTROLS ? 17 : 8;
@@ -207,7 +215,7 @@ export class Renderer {
 
     for (let i = 0; i < totalHeight; i++) {
       // Position cursor at start of line and clear the entire line
-      process.stdout.write(`\x1b[${i + 1};1H\x1b[2K`);
+      out.push(`\x1b[${i + 1};1H\x1b[2K`);
 
       // Render all QR codes side-by-side
       for (let qIdx = 0; qIdx < qrDataList.length; qIdx++) {
@@ -215,7 +223,7 @@ export class Renderer {
         const colPos = colPositions[qIdx];
 
         if (i < qrData.height) {
-          process.stdout.write(`\x1b[${i + 1};${colPos}H${qrData.lines[i]}`);
+          out.push(`\x1b[${i + 1};${colPos}H${qrData.lines[i]}`);
         }
       }
 
@@ -229,7 +237,7 @@ export class Renderer {
 
       if (i === 1) {
         if (this.options.isSlideshow) {
-          process.stdout.write(`\x1b[1;${termWidth}H\x1b[31m●\x1b[0m`);
+          out.push(`\x1b[1;${termWidth}H\x1b[31m●\x1b[0m`);
         }
       }
       if (i === 2) {
@@ -263,14 +271,16 @@ export class Renderer {
 
       // Print Sidebar if exists, or clear line segment if inside sidebar zone
       if (sidebarText) {
-        process.stdout.write(`\x1b[${i + 1};${sidebarCol}H${sidebarText}\x1b[K`);
+        out.push(`\x1b[${i + 1};${sidebarCol}H${sidebarText}\x1b[K`);
       } else if (i < sidebarHeight) {
         // Clear sidebar area for lines without text
-        process.stdout.write(`\x1b[${i + 1};${sidebarCol}H\x1b[K`);
+        out.push(`\x1b[${i + 1};${sidebarCol}H\x1b[K`);
       }
     }
 
     // Move cursor to bottom
-    process.stdout.write(`\x1b[${process.stdout.rows};1H`);
+    out.push(`\x1b[${process.stdout.rows};1H`);
+
+    return out.join('');
   }
 }
