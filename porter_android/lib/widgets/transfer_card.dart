@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/transfer.dart';
 import '../providers/scanner_provider.dart';
@@ -29,6 +31,13 @@ class _TransferCardState extends State<TransferCard> {
     setState(() => _saving = true);
     await saveTransfer(context, widget.transfer);
     if (mounted) setState(() => _saving = false);
+  }
+
+  void _handleOpen() {
+    final path = widget.transfer.savedPath;
+    if (path != null) {
+      launchUrl(Uri.file(File(path).parent.path));
+    }
   }
 
   void _handleRemove() {
@@ -247,21 +256,41 @@ class _TransferCardState extends State<TransferCard> {
               ),
             ],
             _buildRelayRow(context, transfer),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton.icon(
-                onPressed: transfer.isComplete && !_saving ? _handleSave : null,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.download),
-                label: Text(_saving ? 'Saving…' : 'Save'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700),
+            if (transfer.savedPath != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Saved to ${transfer.savedPath}',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(color: Colors.white54),
               ),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (transfer.savedPath != null) ...[
+                  OutlinedButton.icon(
+                    onPressed: _handleOpen,
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('Open'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                ElevatedButton.icon(
+                  onPressed: transfer.isComplete && !_saving ? _handleSave : null,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download),
+                  label: Text(_saving ? 'Saving…' : (transfer.savedPath != null ? 'Save again' : 'Save')),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700),
+                ),
+              ],
             ),
           ],
         ),

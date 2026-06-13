@@ -129,4 +129,14 @@ class ScannerProvider extends ChangeNotifier {
     relayStates.remove(id);
     notifyListeners();
   }
+
+  /// Records where [id]'s assembled data was saved, so the UI can offer to
+  /// open that location later.
+  void markTransferSaved(String id, String path) {
+    final transfer = allTransfers[id];
+    if (transfer != null) {
+      transfer.savedPath = path;
+      notifyListeners();
+    }
+  }
 }

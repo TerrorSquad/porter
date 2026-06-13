@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/transfer.dart';
+import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/file_handler.dart';
 
@@ -15,6 +16,8 @@ Future<void> saveTransfer(BuildContext context, Transfer transfer) async {
   try {
     final path = await FileHandler.saveFile(transfer, outputDirectory: outputDirectory);
     if (context.mounted) {
+      context.read<ScannerProvider>().markTransferSaved(transfer.id, path);
+
       final messenger = ScaffoldMessenger.of(context);
       // Clear any earlier "transfer complete" snackbar so this confirmation
       // (and its Open action) is visible immediately, not queued behind it.

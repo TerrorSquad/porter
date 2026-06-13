@@ -11,6 +11,9 @@ class Transfer {
   DateTime createdAt;
   DateTime? completedAt;
 
+  /// Path the assembled data was last saved to, or null if not saved yet.
+  String? savedPath;
+
   Transfer({
     required this.id,
     DateTime? createdAt,
@@ -46,5 +49,6 @@ class Transfer {
     verified = null;
     error = null;
     completedAt = null;
+    savedPath = null;
   }
 }
