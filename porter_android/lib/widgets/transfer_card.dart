@@ -9,6 +9,8 @@ import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/file_handler.dart';
 import '../utils/format.dart';
+import '../utils/transfer_actions.dart';
+import 'chunk_grid.dart';
 
 class TransferCard extends StatefulWidget {
   final Transfer transfer;
@@ -25,26 +27,8 @@ class _TransferCardState extends State<TransferCard> {
 
   Future<void> _handleSave() async {
     setState(() => _saving = true);
-    try {
-      final outputDirectory = context.read<SettingsProvider>().outputDirectory;
-      final path = await FileHandler.saveFile(
-        widget.transfer,
-        outputDirectory: outputDirectory,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved to $path')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    await saveTransfer(context, widget.transfer);
+    if (mounted) setState(() => _saving = false);
   }
 
   void _handleRemove() {
@@ -223,6 +207,8 @@ class _TransferCardState extends State<TransferCard> {
                 ],
               ),
               if (_showMissing && !transfer.isComplete) ...[
+                const SizedBox(height: 4),
+                ChunkGrid(total: transfer.total, seenIndices: transfer.seenIndices),
                 const SizedBox(height: 4),
                 Text(
                   'Missing: ${formatChunkRanges(transfer.missingIndices)}',

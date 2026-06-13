@@ -115,6 +115,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                     ],
                   ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Auto-save completed transfers'),
+                    subtitle: const Text(
+                      'Save to the output directory as soon as a transfer finishes',
+                    ),
+                    value: settings.autoSave,
+                    onChanged: (value) =>
+                        context.read<SettingsProvider>().setAutoSave(value),
+                  ),
                 ],
               ),
             ),

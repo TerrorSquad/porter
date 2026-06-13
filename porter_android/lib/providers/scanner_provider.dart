@@ -19,6 +19,9 @@ class ScannerProvider extends ChangeNotifier {
   final Map<String, RelayState> relayStates = {};
   bool? relayLastOk;
 
+  /// Called when a transfer finishes assembling successfully (not on error).
+  Function(Transfer)? onTransferComplete;
+
   ScannerProvider()
       : assembler = Assembler(
           onProgress: (t) {},
@@ -96,6 +99,9 @@ class ScannerProvider extends ChangeNotifier {
 
   void _onComplete(Transfer t) {
     _activeTransfer = t;
+    if (t.error == null) {
+      onTransferComplete?.call(t);
+    }
     notifyListeners();
   }
 

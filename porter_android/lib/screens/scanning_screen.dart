@@ -6,9 +6,11 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 import '../models/camera_fps.dart';
 import '../models/camera_resolution.dart';
+import '../models/transfer.dart';
 import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
 import '../utils/format.dart';
+import '../utils/transfer_actions.dart';
 import 'settings_screen.dart';
 import 'transfers_screen.dart';
 
@@ -52,6 +54,8 @@ class _ScanningScreenState extends State<ScanningScreen> {
     _rateTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (mounted) setState(() {});
     });
+
+    context.read<ScannerProvider>().onTransferComplete = _handleTransferComplete;
   }
 
   Future<void> _initCamera() async {
@@ -148,8 +152,31 @@ class _ScanningScreenState extends State<ScanningScreen> {
   void dispose() {
     _rateTimer?.cancel();
     _focusIndicatorTimer?.cancel();
+    context.read<ScannerProvider>().onTransferComplete = null;
     controller.dispose();
     super.dispose();
+  }
+
+  /// Shows a save prompt when a transfer finishes, or saves it automatically
+  /// if the auto-save setting is enabled.
+  void _handleTransferComplete(Transfer t) {
+    if (!mounted) return;
+
+    if (context.read<SettingsProvider>().autoSave) {
+      saveTransfer(context, t);
+      return;
+    }
+
+    final shortId = t.id.length > 8 ? t.id.substring(0, 8) : t.id;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Transfer $shortId complete'),
+        action: SnackBarAction(
+          label: 'Save',
+          onPressed: () => saveTransfer(context, t),
+        ),
+      ),
+    );
   }
 
   /// Sets the camera focus point at the tap location and shows a brief
@@ -193,6 +220,48 @@ class _ScanningScreenState extends State<ScanningScreen> {
                   top: _focusPoint!.dy - 32,
                   child: const _FocusReticle(),
                 ),
+              Positioned(
+                left: 24,
+                right: 24,
+                bottom: 16,
+                child: _buildZoomSlider(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// A slider for adjusting the camera's zoom, useful for distant or small
+  /// QR codes.
+  Widget _buildZoomSlider() {
+    return ValueListenableBuilder<MobileScannerState>(
+      valueListenable: controller,
+      builder: (context, state, child) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.zoom_out, color: Colors.white70, size: 18),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                  ),
+                  child: Slider(
+                    value: state.zoomScale,
+                    onChanged: controller.setZoomScale,
+                  ),
+                ),
+              ),
+              const Icon(Icons.zoom_in, color: Colors.white70, size: 18),
             ],
           ),
         );
