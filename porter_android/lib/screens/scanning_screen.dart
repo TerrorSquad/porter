@@ -314,9 +314,11 @@ class _ScanningScreenState extends State<ScanningScreen> {
         if (_lastFlashAt == null ||
             now.difference(_lastFlashAt!) > const Duration(milliseconds: 300)) {
           _lastFlashAt = now;
-          controller.toggleTorch();
+          // Ignore torch errors if a detection fires before/during controller
+          // (re)initialization (e.g. right after start() or a camera switch).
+          controller.toggleTorch().catchError((_) {});
           Future.delayed(const Duration(milliseconds: 100), () {
-            if (mounted) controller.toggleTorch();
+            if (mounted) controller.toggleTorch().catchError((_) {});
           });
         }
       }
