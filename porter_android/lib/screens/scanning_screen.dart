@@ -25,6 +25,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
   bool _ready = false;
   bool _restarting = false;
   Timer? _rateTimer;
+  DateTime? _lastFlashAt;
 
   @override
   void initState() {
@@ -32,6 +33,11 @@ class _ScanningScreenState extends State<ScanningScreen> {
     controller = MobileScannerController(
       autoStart: false,
       cameraResolution: _activeResolution.size,
+      // The default (DetectionSpeed.normal) imposes a 250ms gap between
+      // scans, capping throughput at ~4/s regardless of camera speed.
+      // noDuplicates removes that artificial gate and scans as fast as
+      // the camera/Vision pipeline allows.
+      detectionSpeed: DetectionSpeed.noDuplicates,
     );
     _initCamera();
 
@@ -106,6 +112,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
     final next = MobileScannerController(
       autoStart: false,
       cameraResolution: resolution.size,
+      detectionSpeed: DetectionSpeed.noDuplicates,
     );
     next.cameraId = _activeCameraId;
 
@@ -168,11 +175,17 @@ class _ScanningScreenState extends State<ScanningScreen> {
       if (rawValue != null) {
         provider.ingestQR(rawValue, relayUrl: relayUrl);
 
-        // Flash feedback
-        controller.toggleTorch();
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) controller.toggleTorch();
-        });
+        // Flash feedback, throttled so it doesn't fight the torch hardware
+        // (and the camera pipeline) at high scan rates.
+        final now = DateTime.now();
+        if (_lastFlashAt == null ||
+            now.difference(_lastFlashAt!) > const Duration(milliseconds: 300)) {
+          _lastFlashAt = now;
+          controller.toggleTorch();
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) controller.toggleTorch();
+          });
+        }
       }
     }
   }
