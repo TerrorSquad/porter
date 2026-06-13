@@ -10,6 +10,7 @@ class Assembler {
   Function(Transfer)? onProgress;
   Function(Transfer)? onComplete;
   Function(int)? onChunkBytes;
+  Function(Transfer, int, List<int>)? onChunkReceived;
 
   Assembler({this.onProgress, this.onComplete, this.onChunkBytes});
 
@@ -40,6 +41,7 @@ class Assembler {
       transfer.addChunk(parsed.index, payload);
       transfer.mode = parsed.mode;
       onChunkBytes?.call(payload.length);
+      onChunkReceived?.call(transfer, parsed.index, payload);
 
       onProgress?.call(transfer);
       _tryComplete(transfer);

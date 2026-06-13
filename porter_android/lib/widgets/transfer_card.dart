@@ -40,6 +40,13 @@ class _TransferCardState extends State<TransferCard> {
     }
   }
 
+  void _handleOpenFolder() {
+    final path = widget.transfer.transferDirPath;
+    if (path != null) {
+      launchUrl(Uri.file(path));
+    }
+  }
+
   void _handleRemove() {
     context.read<ScannerProvider>().reset(widget.transfer.id);
   }
@@ -183,6 +190,12 @@ class _TransferCardState extends State<TransferCard> {
                 const SizedBox(width: 8),
                 checksumBadge,
                 const Spacer(),
+                if (transfer.transferDirPath != null)
+                  IconButton(
+                    icon: const Icon(Icons.folder_open),
+                    tooltip: 'Open download folder',
+                    onPressed: _handleOpenFolder,
+                  ),
                 IconButton(
                   icon: const Icon(Icons.close),
                   tooltip: 'Remove',

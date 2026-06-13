@@ -14,6 +14,10 @@ class Transfer {
   /// Path the assembled data was last saved to, or null if not saved yet.
   String? savedPath;
 
+  /// Directory holding this transfer's incrementally-saved chunks and
+  /// metadata, once created on disk.
+  String? transferDirPath;
+
   Transfer({
     required this.id,
     DateTime? createdAt,

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../models/relay_state.dart';
 import '../models/transfer.dart';
 import '../services/assembler.dart';
+import '../services/chunk_storage.dart';
 import '../services/relay_service.dart';
 
 class ScannerProvider extends ChangeNotifier {
@@ -19,6 +22,10 @@ class ScannerProvider extends ChangeNotifier {
   final Map<String, RelayState> relayStates = {};
   bool? relayLastOk;
 
+  /// Output directory to persist chunks/metadata to for the transfer
+  /// currently being ingested. Set at the start of each [ingestQR] call.
+  String? _currentOutputDirectory;
+
   /// Called when a transfer finishes assembling successfully (not on error).
   Function(Transfer)? onTransferComplete;
 
@@ -30,6 +37,7 @@ class ScannerProvider extends ChangeNotifier {
     assembler.onProgress = _onProgress;
     assembler.onComplete = _onComplete;
     assembler.onChunkBytes = _onChunkBytes;
+    assembler.onChunkReceived = _onChunkReceived;
   }
 
   Transfer? get activeTransfer => _activeTransfer;
@@ -54,7 +62,9 @@ class ScannerProvider extends ChangeNotifier {
     _recentBytes.add((DateTime.now(), bytes));
   }
 
-  void ingestQR(String raw, {String? relayUrl}) {
+  void ingestQR(String raw, {String? relayUrl, String? outputDirectory}) {
+    _currentOutputDirectory = outputDirectory;
+
     final now = DateTime.now();
     _recentScans.add(now);
     _recentScans.removeWhere((t) => now.difference(t) > _rateWindow);
@@ -100,10 +110,34 @@ class ScannerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Persists a newly-received chunk to the transfer's directory on disk.
+  void _onChunkReceived(Transfer t, int index, List<int> bytes) {
+    final outputDirectory = _currentOutputDirectory;
+    unawaited(
+      ChunkStorage.writeChunk(t, index, bytes, outputDirectory: outputDirectory)
+          .then((_) => notifyListeners())
+          .catchError((Object e) => debugPrint('Failed to save chunk $index for ${t.id}: $e')),
+    );
+  }
+
   void _onComplete(Transfer t) {
     _activeTransfer = t;
+    final outputDirectory = _currentOutputDirectory;
     if (t.error == null) {
+      if (t.assembled != null) {
+        unawaited(
+          ChunkStorage.writeAssembledFile(t, outputDirectory: outputDirectory)
+              .then((_) => ChunkStorage.writeMetadata(t, outputDirectory: outputDirectory))
+              .then((_) => notifyListeners())
+              .catchError((Object e) => debugPrint('Failed to save transfer ${t.id}: $e')),
+        );
+      }
       onTransferComplete?.call(t);
+    } else {
+      unawaited(
+        ChunkStorage.writeMetadata(t, outputDirectory: outputDirectory)
+            .catchError((Object e) => debugPrint('Failed to save metadata for ${t.id}: $e')),
+      );
     }
     notifyListeners();
   }

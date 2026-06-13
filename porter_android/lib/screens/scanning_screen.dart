@@ -306,11 +306,15 @@ class _ScanningScreenState extends State<ScanningScreen> {
 
   void _handleQRDetected(BarcodeCapture capture) {
     final provider = context.read<ScannerProvider>();
-    final relayUrl = context.read<SettingsProvider>().relayUrl;
+    final settings = context.read<SettingsProvider>();
     for (final barcode in capture.barcodes) {
       final rawValue = barcode.rawValue;
       if (rawValue != null) {
-        provider.ingestQR(rawValue, relayUrl: relayUrl);
+        provider.ingestQR(
+          rawValue,
+          relayUrl: settings.relayUrl,
+          outputDirectory: settings.outputDirectory,
+        );
 
         // Flash feedback, throttled so it doesn't fight the torch hardware
         // (and the camera pipeline) at high scan rates.
