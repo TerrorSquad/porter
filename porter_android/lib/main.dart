@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/scanner_provider.dart';
+import 'providers/settings_provider.dart';
 import 'screens/scanning_screen.dart';
 
 void main() {
@@ -15,6 +16,7 @@ class PorterApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ScannerProvider()),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: MaterialApp(
         title: 'Porter Receiver',

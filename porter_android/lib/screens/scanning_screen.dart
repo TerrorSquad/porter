@@ -2,11 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/scanner_provider.dart';
-import 'result_screen.dart';
-
-const _cameraIdPrefKey = 'porter.selectedCameraId';
+import '../providers/settings_provider.dart';
+import 'settings_screen.dart';
 
 class ScanningScreen extends StatefulWidget {
   const ScanningScreen({Key? key}) : super(key: key);
@@ -18,7 +16,9 @@ class ScanningScreen extends StatefulWidget {
 class _ScanningScreenState extends State<ScanningScreen> {
   late MobileScannerController controller;
   List<Map<String, String>> _availableCameras = [];
-  String? _selectedCameraId;
+  String? _activeCameraId;
+  bool _ready = false;
+  bool _restarting = false;
 
   @override
   void initState() {
@@ -28,10 +28,12 @@ class _ScanningScreenState extends State<ScanningScreen> {
   }
 
   Future<void> _initCamera() async {
+    final settings = context.read<SettingsProvider>();
+    await settings.ready;
+
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       final cameras = await controller.getAvailableCameras();
-      final prefs = await SharedPreferences.getInstance();
-      final savedId = prefs.getString(_cameraIdPrefKey);
+      final savedId = settings.selectedCameraId;
 
       String? selectedId;
       if (savedId != null && cameras.any((camera) => camera['id'] == savedId)) {
@@ -40,35 +42,36 @@ class _ScanningScreenState extends State<ScanningScreen> {
         selectedId = cameras.first['id'];
       }
 
+      if (selectedId != settings.selectedCameraId) {
+        await settings.setSelectedCameraId(selectedId);
+      }
+
+      _activeCameraId = selectedId;
       controller.cameraId = selectedId;
 
       if (mounted) {
         setState(() {
           _availableCameras = cameras;
-          _selectedCameraId = selectedId;
         });
       }
     }
 
+    _ready = true;
     await controller.start();
   }
 
-  Future<void> _onCameraSelected(String? id) async {
-    if (id == null || id == _selectedCameraId) {
-      return;
-    }
+  /// Restarts the scanner on the camera selected in Settings.
+  Future<void> _applyCameraChange(String? cameraId) async {
+    if (_restarting) return;
+    _restarting = true;
 
-    setState(() {
-      _selectedCameraId = id;
-    });
-
-    controller.cameraId = id;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_cameraIdPrefKey, id);
+    _activeCameraId = cameraId;
+    controller.cameraId = cameraId;
 
     await controller.stop();
     await controller.start();
+
+    _restarting = false;
   }
 
   @override
@@ -95,19 +98,40 @@ class _ScanningScreenState extends State<ScanningScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+
+    if (_ready &&
+        !_restarting &&
+        defaultTargetPlatform == TargetPlatform.macOS &&
+        settings.selectedCameraId != _activeCameraId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _applyCameraChange(settings.selectedCameraId);
+      });
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Porter Receiver'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      SettingsScreen(availableCameras: _availableCameras),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: Consumer<ScannerProvider>(
         builder: (context, provider, _) {
           final transfer = provider.activeTransfer;
-
-          // If transfer complete, show result screen
-          if (transfer != null && transfer.isComplete && transfer.assembled != null) {
-            return ResultScreen(transfer: transfer);
-          }
 
           return Column(
             children: [
@@ -143,33 +167,6 @@ class _ScanningScreenState extends State<ScanningScreen> {
                       Text(
                         'Point camera at QR codes',
                         style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ],
-                    if (defaultTargetPlatform == TargetPlatform.macOS &&
-                        _availableCameras.length > 1) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          const Icon(Icons.videocam, color: Colors.white70),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: DropdownButton<String>(
-                              value: _selectedCameraId,
-                              isExpanded: true,
-                              dropdownColor: Colors.black87,
-                              style: const TextStyle(color: Colors.white),
-                              onChanged: _onCameraSelected,
-                              items: _availableCameras
-                                  .map(
-                                    (camera) => DropdownMenuItem(
-                                      value: camera['id'],
-                                      child: Text(camera['label'] ?? camera['id'] ?? ''),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                     const SizedBox(height: 16),
