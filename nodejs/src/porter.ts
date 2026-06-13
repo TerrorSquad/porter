@@ -162,9 +162,10 @@ function runSender() {
     }
     console.log('  --ecc=L|M|Q|H     Error correction level (Default: L)');
     if (FEATURE_MULTI_QR) {
-      console.log("  --multi=N|auto    Render N QR codes side-by-side (1-4, or 'auto')");
+      console.log("  --multi=N|auto    Render N QR codes in a grid (1-4, or 'auto')");
       console.log('                    Speeds up transfer: auto-detected or manual');
     }
+    console.log('  --no-info         Hide the info sidebar (chunk/progress/etc.)');
     console.log('  --speed=<seconds> QR code delay (Default: 0.5)');
     console.log('                    0.5 = 2 chunks/sec (default, works everywhere)');
     console.log('                    0.3 = 3.3 chunks/sec (good lighting)');
@@ -213,6 +214,7 @@ function runSender() {
   }
   const useBase64 = FEATURE_BASE64 && requestedBase64;
   const useInverted = FEATURE_INVERT && flags['--invert'] === 'true';
+  const noInfo = flags['--no-info'] === 'true';
   const speed = parseFloat(flags['--speed']) || 0.5; // Optimized default
   const buffer = parseInt(flags['--buffer']) || 10;
   const eccLevel = (['L', 'M', 'Q', 'H'].includes(flags['--ecc']) ? flags['--ecc'] : 'L') as
@@ -275,6 +277,7 @@ function runSender() {
     showPartProgress: totalParts > 1,
     totalParts: totalParts,
     multiQr,
+    noInfo,
   });
 
   renderer.setChunks(chunker.chunks, chunker.version);

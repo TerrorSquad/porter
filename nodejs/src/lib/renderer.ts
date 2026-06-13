@@ -73,8 +73,25 @@ export interface RenderOptions {
   eccLevel: 'L' | 'M' | 'Q' | 'H';
   showPartProgress?: boolean;
   totalParts?: number;
-  multiQr?: number; // Number of QR codes to display side-by-side (1-4)
+  multiQr?: number; // Number of QR codes to display in a grid (1-4)
+  noInfo?: boolean; // Always hide the info sidebar
 }
+
+interface QrData {
+  lines: string[];
+  height: number;
+  payload: string;
+  isChecksum: boolean;
+}
+
+interface SidebarOrigin {
+  row: number;
+  col: number;
+}
+
+const GRID_GAP_X = 2;
+const GRID_GAP_Y = 1;
+const SIDEBAR_WIDTH = 30;
 
 export class Renderer {
   public index: number = 0;
@@ -82,7 +99,7 @@ export class Renderer {
   public version: number = 2; // Default
   public fileName: string;
   public options: RenderOptions;
-  private lastHeight: number = 0; // Track previous QR height to clear properly
+  private lastHeight: number = 0; // Track previous frame height to clear properly
 
   constructor(fileName: string, options: RenderOptions) {
     this.fileName = fileName;
@@ -114,21 +131,33 @@ export class Renderer {
     return moduleCount + 3;
   }
 
-  /**
-   * How many QR codes can be shown side-by-side without the sidebar
-   * overlapping them, given the current QR version and terminal width.
-   */
-  private maxQrColumns(): number {
-    const termWidth = process.stdout.columns || 80;
-    const gap = 2;
-    const sidebarWidth = 30;
-    return Math.max(1, Math.floor((termWidth - sidebarWidth) / (this.qrColumnWidth() + gap)));
+  /** Height (in terminal rows) of a single QR code at the current version. */
+  private qrRowHeight(): number {
+    return this.version * 2 + 10;
+  }
+
+  /** Grid layout (columns × rows, and overall size) for displaying `n` QR codes. */
+  private gridDimensions(n: number): { cols: number; rows: number; width: number; height: number } {
+    const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+    const rows = Math.max(1, Math.ceil(n / cols));
+    const width = cols * this.qrColumnWidth() + (cols - 1) * GRID_GAP_X;
+    const height = rows * this.qrRowHeight() + (rows - 1) * GRID_GAP_Y;
+    return { cols, rows, width, height };
   }
 
   /** Number of QR codes actually rendered per frame, given multiQr and terminal size. */
   private effectiveMultiQr(): number {
     const configured = FEATURE_MULTI_QR ? this.options.multiQr || 1 : 1;
-    return Math.min(configured, this.maxQrColumns());
+    const termWidth = process.stdout.columns || 80;
+    const termHeight = process.stdout.rows || 24;
+
+    for (let n = configured; n > 1; n--) {
+      const { width, height } = this.gridDimensions(n);
+      if (width <= termWidth && height <= termHeight) {
+        return n;
+      }
+    }
+    return 1;
   }
 
   public draw() {
@@ -147,7 +176,7 @@ export class Renderer {
       return;
     }
 
-    // Clear previous QR area (first lastHeight lines) to prevent glitches
+    // Clear previous frame area (first lastHeight lines) to prevent glitches
     // Only do this if we have previous height data
     if (this.lastHeight > 0) {
       for (let i = 0; i < this.lastHeight; i++) {
@@ -156,17 +185,12 @@ export class Renderer {
     }
 
     // Determine how many QR codes to render (multiQr mode), capped to however
-    // many fit alongside the sidebar at the current terminal size.
+    // many fit in a grid at the current terminal size.
     const multiQr = this.effectiveMultiQr();
     const codesToRender = Math.min(multiQr, this.chunks.length - this.index);
     const qrIndices = Array.from({ length: codesToRender }, (_, i) => this.index + i);
 
-    const qrDataList: Array<{
-      lines: string[];
-      height: number;
-      payload: string;
-      isChecksum: boolean;
-    }> = [];
+    const qrDataList: QrData[] = [];
     let maxQrHeight = 0;
 
     for (const idx of qrIndices) {
@@ -196,10 +220,7 @@ export class Renderer {
     process.stdout.write(out.join(''));
   }
 
-  private renderMultiQr(
-    qrDataList: Array<{ lines: string[]; height: number; payload: string; isChecksum: boolean }>,
-    maxQrHeight: number,
-  ): string {
+  private renderMultiQr(qrDataList: QrData[], maxQrHeight: number): string {
     const out: string[] = [];
 
     // Check for minimum screen size
@@ -223,86 +244,95 @@ export class Renderer {
       return out.join('');
     }
 
-    const sidebarHeight = FEATURE_INTERACTIVE_CONTROLS ? 17 : 8;
-    // Clear to at least the max of: current QR height or previous height or sidebar height
-    const totalHeight = Math.max(maxQrHeight, this.lastHeight, sidebarHeight, termHeight);
-    this.lastHeight = maxQrHeight; // Remember for next frame
-
-    // Calculate column positions for each QR code (assume ~29 chars per small QR)
     const qrWidth = firstLine.length;
-    const gap = 2; // Spacing between QR codes
-    const colPositions = qrDataList.map((_, i) => 1 + i * (qrWidth + gap));
+    const { cols, width: gridWidth, height: gridHeight } = this.gridDimensions(qrDataList.length);
+    const sidebarLines = FEATURE_INTERACTIVE_CONTROLS ? 17 : 8;
 
-    // Get primary chunk info (first one)
-    const primary = qrDataList[0];
-    const progress = Math.round(((this.index + 1) / this.chunks.length) * 100);
+    // Place the info panel beside or below the QR grid - wherever it fits
+    // without overlapping a QR code. If it fits nowhere, hide it entirely.
+    let sidebarOrigin: SidebarOrigin | null = null;
+    if (!this.options.noInfo) {
+      if (gridWidth + GRID_GAP_X + SIDEBAR_WIDTH <= termWidth) {
+        sidebarOrigin = { row: 1, col: gridWidth + GRID_GAP_X + 1 };
+      } else if (gridHeight + GRID_GAP_Y + sidebarLines <= termHeight) {
+        sidebarOrigin = { row: gridHeight + GRID_GAP_Y + 1, col: 1 };
+      }
+    }
+
+    const contentHeight = Math.max(
+      gridHeight,
+      sidebarOrigin ? sidebarOrigin.row + sidebarLines - 1 : 0,
+    );
+    const totalHeight = Math.max(contentHeight, this.lastHeight, termHeight);
+    this.lastHeight = contentHeight; // Remember for next frame
 
     for (let i = 0; i < totalHeight; i++) {
-      // Position cursor at start of line and clear the entire line
       out.push(`\x1b[${i + 1};1H\x1b[2K`);
+    }
 
-      // Render all QR codes side-by-side
-      for (let qIdx = 0; qIdx < qrDataList.length; qIdx++) {
-        const qrData = qrDataList[qIdx];
-        const colPos = colPositions[qIdx];
+    // Render the QR grid.
+    for (let qIdx = 0; qIdx < qrDataList.length; qIdx++) {
+      const qrData = qrDataList[qIdx];
+      const col = qIdx % cols;
+      const row = Math.floor(qIdx / cols);
+      const colPos = 1 + col * (qrWidth + GRID_GAP_X);
+      const rowPos = 1 + row * (maxQrHeight + GRID_GAP_Y);
 
-        if (i < qrData.height) {
-          out.push(`\x1b[${i + 1};${colPos}H${qrData.lines[i]}`);
-        }
+      for (let lineIdx = 0; lineIdx < qrData.lines.length; lineIdx++) {
+        out.push(`\x1b[${rowPos + lineIdx};${colPos}H${qrData.lines[lineIdx]}`);
       }
+    }
 
-      // Prepare Sidebar Content (positioned after the last QR code). codesToRender
-      // is already capped to whatever fits alongside the sidebar, so this never
-      // lands inside a QR code's columns.
-      const lastQrWidth = qrDataList[qrDataList.length - 1]?.lines?.[0]?.length || 0;
-      const sidebarCol = colPositions[qrDataList.length - 1] + lastQrWidth + 4;
-      let sidebarText = '';
+    // "Active" indicator for slideshow mode, top-right corner of the terminal.
+    // Only drawn when it has room to the right of the grid so it can never
+    // land on top of a QR code.
+    if (this.options.isSlideshow && termWidth > gridWidth) {
+      out.push(`\x1b[1;${termWidth}H\x1b[31m●\x1b[0m`);
+    }
 
-      if (i === 1) {
-        if (this.options.isSlideshow) {
-          out.push(`\x1b[1;${termWidth}H\x1b[31m●\x1b[0m`);
-        }
-      }
-      if (i === 2) {
-        const multiStr =
-          FEATURE_MULTI_QR && qrDataList.length > 1 ? ` (×${qrDataList.length})` : '';
-        const endChunk = Math.min(this.index + qrDataList.length, this.chunks.length);
-        const chunkRange =
-          qrDataList.length > 1 ? `${this.index + 1}–${endChunk}` : `${this.index + 1}`;
-        sidebarText = `\x1b[1;32m📦 CHUNK:\x1b[0m ${chunkRange} / ${this.chunks.length}${multiStr}`;
-      }
-      if (i === 3) sidebarText = `\x1b[1;32m📊 PROG: \x1b[0m${progress}%`;
-
-      if (i === 5) sidebarText = `\x1b[1;33m📏 VER:  \x1b[0m${this.version}`;
-      if (i === 6)
-        sidebarText = `\x1b[1;33m⏳ ETA:  \x1b[0m${Math.round((this.chunks.length - this.index) * this.options.speed)}s`;
-      if (i === 7) {
-        if (primary.isChecksum) {
-          sidebarText = `\x1b[1;35m✓ CHECKSUM\x1b[0m`;
-        } else {
-          sidebarText = `\x1b[1;35m🛡️  ECC:  \x1b[0m${this.options.eccLevel}`;
-        }
-      }
-
-      if (FEATURE_INTERACTIVE_CONTROLS) {
-        if (i === 9) sidebarText = `\x1b[1;34m🕹️  CONTROLS:\x1b[0m`;
-        if (i === 10) sidebarText = `   Next:  \x1b[7m L \x1b[0m or \x1b[7m → \x1b[0m`;
-        if (i === 11) sidebarText = `   Back:  \x1b[7m H \x1b[0m or \x1b[7m ← \x1b[0m`;
-        if (i === 12) sidebarText = `   Auto:  \x1b[7m S \x1b[0m (Toggle)`;
-        if (i === 13) sidebarText = `   Quit:  \x1b[7m Q \x1b[0m`;
-      }
-
-      // Print Sidebar if exists, or clear line segment if inside sidebar zone
-      if (sidebarText) {
-        out.push(`\x1b[${i + 1};${sidebarCol}H${sidebarText}\x1b[K`);
-      } else if (i < sidebarHeight) {
-        // Clear sidebar area for lines without text
-        out.push(`\x1b[${i + 1};${sidebarCol}H\x1b[K`);
-      }
+    if (sidebarOrigin) {
+      out.push(this.renderSidebar(qrDataList, sidebarOrigin, sidebarLines));
     }
 
     // Move cursor to bottom
     out.push(`\x1b[${process.stdout.rows};1H`);
+
+    return out.join('');
+  }
+
+  private renderSidebar(qrDataList: QrData[], origin: SidebarOrigin, sidebarLines: number): string {
+    const out: string[] = [];
+    const primary = qrDataList[0];
+    const progress = Math.round(((this.index + 1) / this.chunks.length) * 100);
+    const lines: string[] = [];
+
+    const multiStr = FEATURE_MULTI_QR && qrDataList.length > 1 ? ` (×${qrDataList.length})` : '';
+    const endChunk = Math.min(this.index + qrDataList.length, this.chunks.length);
+    const chunkRange =
+      qrDataList.length > 1 ? `${this.index + 1}–${endChunk}` : `${this.index + 1}`;
+    lines[2] = `\x1b[1;32m📦 CHUNK:\x1b[0m ${chunkRange} / ${this.chunks.length}${multiStr}`;
+    lines[3] = `\x1b[1;32m📊 PROG: \x1b[0m${progress}%`;
+
+    lines[5] = `\x1b[1;33m📏 VER:  \x1b[0m${this.version}`;
+    lines[6] = `\x1b[1;33m⏳ ETA:  \x1b[0m${Math.round((this.chunks.length - this.index) * this.options.speed)}s`;
+    lines[7] = primary.isChecksum
+      ? `\x1b[1;35m✓ CHECKSUM\x1b[0m`
+      : `\x1b[1;35m🛡️  ECC:  \x1b[0m${this.options.eccLevel}`;
+
+    if (FEATURE_INTERACTIVE_CONTROLS) {
+      lines[9] = `\x1b[1;34m🕹️  CONTROLS:\x1b[0m`;
+      lines[10] = `   Next:  \x1b[7m L \x1b[0m or \x1b[7m → \x1b[0m`;
+      lines[11] = `   Back:  \x1b[7m H \x1b[0m or \x1b[7m ← \x1b[0m`;
+      lines[12] = `   Auto:  \x1b[7m S \x1b[0m (Toggle)`;
+      lines[13] = `   Quit:  \x1b[7m Q \x1b[0m`;
+    }
+
+    for (let i = 0; i < sidebarLines; i++) {
+      const text = lines[i];
+      if (text) {
+        out.push(`\x1b[${origin.row + i};${origin.col}H${text}\x1b[K`);
+      }
+    }
 
     return out.join('');
   }
