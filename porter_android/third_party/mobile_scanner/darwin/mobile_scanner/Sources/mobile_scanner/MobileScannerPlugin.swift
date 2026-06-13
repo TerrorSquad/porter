@@ -588,15 +588,35 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         }
     }
 
-    /// Requests a frame rate for the camera's active format, clamped to the
-    /// range the format actually supports.
+    /// Requests a frame rate for the camera's active format, using the
+    /// supported range closest to the requested value.
+    ///
+    /// Many cameras only support a fixed set of discrete frame rates (where
+    /// `minFrameRate == maxFrameRate`) whose durations don't correspond to a
+    /// "nice" `1/fps` value (e.g. `1000000/30000030` rather than `1/30`).
+    /// Setting `activeVideo{Min,Max}FrameDuration` to a duration that isn't
+    /// exactly one a range reports throws an Objective-C exception that
+    /// terminates the process (uncatchable from Swift), so this always reuses
+    /// a boundary duration taken directly from the chosen range.
     private func applyCameraFrameRate(device: AVCaptureDevice, fps: Int) {
-        guard let range = device.activeFormat.videoSupportedFrameRateRanges.first else {
+        let ranges = device.activeFormat.videoSupportedFrameRateRanges
+        guard !ranges.isEmpty else {
             return
         }
 
-        let clampedFps = min(max(Double(fps), range.minFrameRate), range.maxFrameRate)
-        let duration = CMTimeMake(value: 1, timescale: Int32(clampedFps))
+        let target = Double(fps)
+        let closest = ranges.min { lhs, rhs in
+            frameRateRangeDistance(target, lhs) < frameRateRangeDistance(target, rhs)
+        }!
+
+        let duration: CMTime
+        if target >= closest.maxFrameRate {
+            duration = closest.minFrameDuration
+        } else if target <= closest.minFrameRate {
+            duration = closest.maxFrameDuration
+        } else {
+            duration = CMTimeMake(value: 1, timescale: Int32(target))
+        }
 
         do {
             try device.lockForConfiguration()
@@ -606,6 +626,18 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         } catch {
             // Keep the format's default frame rate.
         }
+    }
+
+    /// Distance from `target` to the nearest rate within `range`, or 0 if
+    /// `target` already falls inside it.
+    private func frameRateRangeDistance(_ target: Double, _ range: AVFrameRateRange) -> Double {
+        if target < range.minFrameRate {
+            return range.minFrameRate - target
+        }
+        if target > range.maxFrameRate {
+            return target - range.maxFrameRate
+        }
+        return 0
     }
 
     /// Get the preferred video format for the given video output.
