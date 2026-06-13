@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/camera_fps.dart';
 import '../models/camera_resolution.dart';
+import '../services/secure_bookmark.dart';
 
 const _kOutputDirectoryKey = 'porter.outputDirectory';
+const _kOutputDirectoryBookmarkKey = 'porter.outputDirectoryBookmark';
 const _kAutoSaveKey = 'porter.autoSave';
 const _kCameraResolutionKey = 'porter.cameraResolution';
 const _kCameraFpsKey = 'porter.cameraFps';
@@ -52,6 +54,19 @@ class SettingsProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _outputDirectory = prefs.getString(_kOutputDirectoryKey);
     _autoSave = prefs.getBool(_kAutoSaveKey) ?? false;
+
+    final bookmark = prefs.getString(_kOutputDirectoryBookmarkKey);
+    if (bookmark != null) {
+      final resolution = await SecureBookmark.resolve(bookmark);
+      if (resolution != null) {
+        _outputDirectory = resolution.path;
+        await prefs.setString(_kOutputDirectoryKey, resolution.path);
+        if (resolution.refreshedBookmark != null) {
+          await prefs.setString(_kOutputDirectoryBookmarkKey, resolution.refreshedBookmark!);
+        }
+      }
+    }
+
     _relayUrl = prefs.getString(_kRelayUrlKey) ?? '';
     _selectedCameraId = prefs.getString(_kSelectedCameraIdKey);
 
@@ -81,7 +96,9 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setOutputDirectory(String? path) async {
+  /// Sets the output directory. On macOS, pass [bookmark] (from
+  /// [SecureBookmark.create]) so access to [path] survives app restarts.
+  Future<void> setOutputDirectory(String? path, {String? bookmark}) async {
     _outputDirectory = path;
     notifyListeners();
 
@@ -90,6 +107,12 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.remove(_kOutputDirectoryKey);
     } else {
       await prefs.setString(_kOutputDirectoryKey, path);
+    }
+
+    if (bookmark == null) {
+      await prefs.remove(_kOutputDirectoryBookmarkKey);
+    } else {
+      await prefs.setString(_kOutputDirectoryBookmarkKey, bookmark);
     }
   }
 

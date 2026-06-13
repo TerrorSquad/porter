@@ -8,6 +8,7 @@ import '../models/camera_fps.dart';
 import '../models/camera_resolution.dart';
 import '../providers/settings_provider.dart';
 import '../services/file_handler.dart';
+import '../services/secure_bookmark.dart';
 
 class SettingsScreen extends StatefulWidget {
   final List<Map<String, String>> availableCameras;
@@ -48,9 +49,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _pickOutputDirectory() async {
     final path = await FilePicker.platform.getDirectoryPath();
-    if (path != null && mounted) {
-      await context.read<SettingsProvider>().setOutputDirectory(path);
-    }
+    if (path == null || !mounted) return;
+
+    final settings = context.read<SettingsProvider>();
+    final bookmark = await SecureBookmark.create(path);
+    await settings.setOutputDirectory(path, bookmark: bookmark);
   }
 
   Future<void> _openOutputDirectory() async {
