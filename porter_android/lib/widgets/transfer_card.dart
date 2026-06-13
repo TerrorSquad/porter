@@ -21,6 +21,7 @@ class TransferCard extends StatefulWidget {
 
 class _TransferCardState extends State<TransferCard> {
   bool _saving = false;
+  bool _showMissing = false;
 
   Future<void> _handleSave() async {
     setState(() => _saving = true);
@@ -200,22 +201,54 @@ class _TransferCardState extends State<TransferCard> {
             if (transfer.total > 0) ...[
               LinearProgressIndicator(value: transfer.progress / 100),
               const SizedBox(height: 4),
-              Text(
-                '${transfer.seenIndices.length} / ${transfer.total} chunks',
-                style: Theme.of(context).textTheme.labelSmall,
+              Row(
+                children: [
+                  Text(
+                    '${transfer.seenIndices.length} / ${transfer.total} chunks',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                  if (!transfer.isComplete) ...[
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: () => setState(() => _showMissing = !_showMissing),
+                      child: Text(
+                        _showMissing ? 'Hide missing ▲' : 'Show missing ▼',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: Colors.blue.shade300),
+                      ),
+                    ),
+                  ],
+                ],
               ),
+              if (_showMissing && !transfer.isComplete) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Missing: ${formatChunkRanges(transfer.missingIndices)}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelSmall
+                      ?.copyWith(color: Colors.white54),
+                ),
+              ],
             ] else
               Text(
                 'Waiting for data chunks…',
                 style: Theme.of(context).textTheme.labelSmall,
               ),
-            if (transfer.assembled != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Size: ${formatBytes(transfer.assembled!.length)}',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ],
+            const SizedBox(height: 4),
+            Text(
+              transfer.assembled != null
+                  ? 'Size: ${formatBytes(transfer.assembled!.length)} · '
+                      'completed in ${formatDuration(transfer.completedAt!.difference(transfer.createdAt))}'
+                  : 'Received: ${formatBytes(transfer.receivedBytes)} · '
+                      '${formatDuration(DateTime.now().difference(transfer.createdAt))} elapsed',
+              style: Theme.of(context)
+                  .textTheme
+                  .labelSmall
+                  ?.copyWith(color: Colors.white54),
+            ),
             if (preview != null) ...[
               const SizedBox(height: 8),
               preview,

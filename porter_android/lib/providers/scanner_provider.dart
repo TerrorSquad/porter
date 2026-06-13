@@ -10,6 +10,7 @@ class ScannerProvider extends ChangeNotifier {
   final Assembler assembler;
   Transfer? _activeTransfer;
   final List<DateTime> _recentScans = [];
+  final List<(DateTime, int)> _recentBytes = [];
 
   int totalScanned = 0;
   int duplicatesSkipped = 0;
@@ -25,6 +26,7 @@ class ScannerProvider extends ChangeNotifier {
         ) {
     assembler.onProgress = _onProgress;
     assembler.onComplete = _onComplete;
+    assembler.onChunkBytes = _onChunkBytes;
   }
 
   Transfer? get activeTransfer => _activeTransfer;
@@ -33,6 +35,18 @@ class ScannerProvider extends ChangeNotifier {
   /// QR codes processed per second, averaged over the last [_rateWindow].
   double get scansPerSecond =>
       _recentScans.length / _rateWindow.inSeconds;
+
+  /// Payload bytes received per second, averaged over the last [_rateWindow].
+  double get bytesPerSecond {
+    final now = DateTime.now();
+    _recentBytes.removeWhere((e) => now.difference(e.$1) > _rateWindow);
+    final total = _recentBytes.fold<int>(0, (sum, e) => sum + e.$2);
+    return total / _rateWindow.inSeconds;
+  }
+
+  void _onChunkBytes(int bytes) {
+    _recentBytes.add((DateTime.now(), bytes));
+  }
 
   void ingestQR(String raw, {String? relayUrl}) {
     final now = DateTime.now();
@@ -93,6 +107,8 @@ class ScannerProvider extends ChangeNotifier {
     lastError = null;
     relayStates.clear();
     relayLastOk = null;
+    _recentScans.clear();
+    _recentBytes.clear();
     notifyListeners();
   }
 

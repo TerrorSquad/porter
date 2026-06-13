@@ -9,8 +9,9 @@ class Assembler {
   final Map<String, Transfer> transfers = {};
   Function(Transfer)? onProgress;
   Function(Transfer)? onComplete;
+  Function(int)? onChunkBytes;
 
-  Assembler({this.onProgress, this.onComplete});
+  Assembler({this.onProgress, this.onComplete, this.onChunkBytes});
 
   /// Process a raw QR string. Returns true if new data was ingested.
   bool ingest(String raw) {
@@ -38,6 +39,7 @@ class Assembler {
       final payload = _decodePayload(parsed.mode, parsed.payload);
       transfer.addChunk(parsed.index, payload);
       transfer.mode = parsed.mode;
+      onChunkBytes?.call(payload.length);
 
       onProgress?.call(transfer);
       _tryComplete(transfer);

@@ -8,6 +8,7 @@ import '../models/camera_fps.dart';
 import '../models/camera_resolution.dart';
 import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
+import '../utils/format.dart';
 import 'settings_screen.dart';
 import 'transfers_screen.dart';
 
@@ -28,6 +29,8 @@ class _ScanningScreenState extends State<ScanningScreen> {
   bool _restarting = false;
   Timer? _rateTimer;
   DateTime? _lastFlashAt;
+  Offset? _focusPoint;
+  Timer? _focusIndicatorTimer;
 
   @override
   void initState() {
@@ -144,14 +147,65 @@ class _ScanningScreenState extends State<ScanningScreen> {
   @override
   void dispose() {
     _rateTimer?.cancel();
+    _focusIndicatorTimer?.cancel();
     controller.dispose();
     super.dispose();
+  }
+
+  /// Sets the camera focus point at the tap location and shows a brief
+  /// reticle there so the focus control is visible on the preview.
+  void _handleFocusTap(TapUpDetails details, Size previewSize) {
+    final local = details.localPosition;
+    final relative = Offset(
+      (local.dx / previewSize.width).clamp(0.0, 1.0),
+      (local.dy / previewSize.height).clamp(0.0, 1.0),
+    );
+
+    setState(() => _focusPoint = local);
+    _focusIndicatorTimer?.cancel();
+    _focusIndicatorTimer = Timer(const Duration(milliseconds: 600), () {
+      if (mounted) setState(() => _focusPoint = null);
+    });
+
+    // Ignore focus errors during a camera restart (e.g. resolution/fps change).
+    controller.setFocusPoint(relative).catchError((_) {});
+  }
+
+  /// The camera preview with tap-to-focus and a focus reticle overlay.
+  Widget _buildPreview() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (details) => _handleFocusTap(details, size),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              MobileScanner(
+                key: ValueKey(controller),
+                controller: controller,
+                onDetect: _handleQRDetected,
+              ),
+              if (_focusPoint != null)
+                Positioned(
+                  left: _focusPoint!.dx - 32,
+                  top: _focusPoint!.dy - 32,
+                  child: const _FocusReticle(),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   String _hudText(ScannerProvider provider) {
     final scanned = provider.totalScanned + provider.duplicatesSkipped;
     final rate = provider.scansPerSecond;
-    return 'scanned $scanned · new ${provider.totalScanned} · dupes ${provider.duplicatesSkipped} · ${rate.toStringAsFixed(1)}/s';
+    final bytesRate = provider.bytesPerSecond;
+    return 'scanned $scanned · new ${provider.totalScanned} · dupes ${provider.duplicatesSkipped} · '
+        '${rate.toStringAsFixed(1)}/s · ${formatBytes(bytesRate.round())}/s';
   }
 
   Widget _buildHud(BuildContext context, ScannerProvider provider, SettingsProvider settings) {
@@ -265,20 +319,10 @@ class _ScanningScreenState extends State<ScanningScreen> {
                     ? Center(
                         child: AspectRatio(
                           aspectRatio: 1,
-                          child: MobileScanner(
-                            key: ValueKey(controller),
-                            controller: controller,
-                            onDetect: _handleQRDetected,
-                            tapToFocus: true,
-                          ),
+                          child: _buildPreview(),
                         ),
                       )
-                    : MobileScanner(
-                        key: ValueKey(controller),
-                        controller: controller,
-                        onDetect: _handleQRDetected,
-                        tapToFocus: true,
-                      ),
+                    : _buildPreview(),
               ),
               Container(
                 color: Colors.black87,
@@ -333,6 +377,55 @@ class _ScanningScreenState extends State<ScanningScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// A brief, fading reticle shown where the user tapped to focus.
+class _FocusReticle extends StatefulWidget {
+  const _FocusReticle();
+
+  @override
+  State<_FocusReticle> createState() => _FocusReticleState();
+}
+
+class _FocusReticleState extends State<_FocusReticle> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: FadeTransition(
+        opacity: Tween<double>(begin: 1, end: 0).animate(_controller),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 1.2, end: 1.0).animate(
+            CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+          ),
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.yellow, width: 2),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ),
       ),
     );
   }

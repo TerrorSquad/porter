@@ -19,6 +19,16 @@ class Transfer {
   int get progress => total > 0 ? ((seenIndices.length / total) * 100).round() : 0;
   bool get isComplete => total > 0 && seenIndices.length == total;
 
+  /// Chunk indices (1-based) that have not been seen yet, in ascending order.
+  List<int> get missingIndices => [
+        for (var i = 1; i <= total; i++)
+          if (!seenIndices.contains(i)) i,
+      ];
+
+  /// Total bytes received so far, across all chunks (before any
+  /// decompression for mode 'C').
+  int get receivedBytes => chunks.values.fold(0, (sum, c) => sum + c.length);
+
   void addChunk(int index, List<int> data) {
     if (!seenIndices.contains(index)) {
       seenIndices.add(index);
