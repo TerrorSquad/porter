@@ -8,6 +8,7 @@ import '../models/camera_resolution.dart';
 import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
 import 'settings_screen.dart';
+import 'transfers_screen.dart';
 
 class ScanningScreen extends StatefulWidget {
   const ScanningScreen({Key? key}) : super(key: key);
@@ -174,6 +175,22 @@ class _ScanningScreenState extends State<ScanningScreen> {
         title: const Text('Porter Receiver'),
         centerTitle: true,
         actions: [
+          Consumer<ScannerProvider>(
+            builder: (context, provider, _) => IconButton(
+              icon: Badge(
+                label: Text('${provider.allTransfers.length}'),
+                isLabelVisible: provider.allTransfers.isNotEmpty,
+                child: const Icon(Icons.list_alt),
+              ),
+              tooltip: 'Transfers',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TransfersScreen()),
+                );
+              },
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',

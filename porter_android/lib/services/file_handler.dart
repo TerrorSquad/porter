@@ -46,11 +46,11 @@ class FileHandler {
 
   static String _generateFilename(Transfer transfer) {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final ext = _guessExtension(transfer);
+    final ext = guessExtension(transfer);
     return 'porter-$timestamp$ext';
   }
 
-  static String _guessExtension(Transfer transfer) {
+  static String guessExtension(Transfer transfer) {
     if (transfer.mode == 'T') return '.txt';
     if (transfer.assembled == null || transfer.assembled!.isEmpty) return '.bin';
 
