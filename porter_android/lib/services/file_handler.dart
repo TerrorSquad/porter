@@ -3,9 +3,21 @@ import 'package:path_provider/path_provider.dart';
 import '../models/transfer.dart';
 
 class FileHandler {
-  static Future<String> saveFile(Transfer transfer) async {
+  /// Saves the assembled transfer to [outputDirectory] if given (creating it
+  /// if necessary), otherwise to the default downloads directory
+  /// (~/Downloads on macOS), falling back to the app's documents directory.
+  static Future<String> saveFile(Transfer transfer, {String? outputDirectory}) async {
     if (transfer.assembled == null) {
       throw Exception('No assembled data to save');
+    }
+
+    if (outputDirectory != null && outputDirectory.isNotEmpty) {
+      final dir = Directory(outputDirectory);
+      await dir.create(recursive: true);
+      final filename = _generateFilename(transfer);
+      final file = File('${dir.path}/$filename');
+      await file.writeAsBytes(transfer.assembled!);
+      return file.path;
     }
 
     try {

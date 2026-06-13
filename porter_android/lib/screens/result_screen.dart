@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/transfer.dart';
 import '../providers/scanner_provider.dart';
+import '../providers/settings_provider.dart';
 import '../services/file_handler.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -20,7 +21,11 @@ class _ResultScreenState extends State<ResultScreen> {
   void _handleSave() async {
     setState(() => _saving = true);
     try {
-      final path = await FileHandler.saveFile(widget.transfer);
+      final outputDirectory = context.read<SettingsProvider>().outputDirectory;
+      final path = await FileHandler.saveFile(
+        widget.transfer,
+        outputDirectory: outputDirectory,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Saved to $path')),
