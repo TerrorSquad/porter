@@ -99,13 +99,36 @@ export class Renderer {
   }
 
   public moveNext() {
-    const step = FEATURE_MULTI_QR ? this.options.multiQr || 1 : 1;
+    const step = this.effectiveMultiQr();
     this.index = Math.min(this.chunks.length - 1, this.index + step);
   }
 
   public movePrev() {
-    const step = FEATURE_MULTI_QR ? this.options.multiQr || 1 : 1;
+    const step = this.effectiveMultiQr();
     this.index = Math.max(0, this.index - step);
+  }
+
+  /** Width (in terminal columns) of a single QR code at the current version. */
+  private qrColumnWidth(): number {
+    const moduleCount = this.version * 4 + 17;
+    return moduleCount + 3;
+  }
+
+  /**
+   * How many QR codes can be shown side-by-side without the sidebar
+   * overlapping them, given the current QR version and terminal width.
+   */
+  private maxQrColumns(): number {
+    const termWidth = process.stdout.columns || 80;
+    const gap = 2;
+    const sidebarWidth = 30;
+    return Math.max(1, Math.floor((termWidth - sidebarWidth) / (this.qrColumnWidth() + gap)));
+  }
+
+  /** Number of QR codes actually rendered per frame, given multiQr and terminal size. */
+  private effectiveMultiQr(): number {
+    const configured = FEATURE_MULTI_QR ? this.options.multiQr || 1 : 1;
+    return Math.min(configured, this.maxQrColumns());
   }
 
   public draw() {
@@ -132,8 +155,9 @@ export class Renderer {
       }
     }
 
-    // Determine how many QR codes to render (multiQr mode)
-    const multiQr = FEATURE_MULTI_QR ? this.options.multiQr || 1 : 1;
+    // Determine how many QR codes to render (multiQr mode), capped to however
+    // many fit alongside the sidebar at the current terminal size.
+    const multiQr = this.effectiveMultiQr();
     const codesToRender = Math.min(multiQr, this.chunks.length - this.index);
     const qrIndices = Array.from({ length: codesToRender }, (_, i) => this.index + i);
 
@@ -227,12 +251,11 @@ export class Renderer {
         }
       }
 
-      // Prepare Sidebar Content (positioned after all QR codes)
+      // Prepare Sidebar Content (positioned after the last QR code). codesToRender
+      // is already capped to whatever fits alongside the sidebar, so this never
+      // lands inside a QR code's columns.
       const lastQrWidth = qrDataList[qrDataList.length - 1]?.lines?.[0]?.length || 0;
-      const sidebarCol = Math.min(
-        colPositions[qrDataList.length - 1] + lastQrWidth + 4,
-        termWidth - 30,
-      );
+      const sidebarCol = colPositions[qrDataList.length - 1] + lastQrWidth + 4;
       let sidebarText = '';
 
       if (i === 1) {
