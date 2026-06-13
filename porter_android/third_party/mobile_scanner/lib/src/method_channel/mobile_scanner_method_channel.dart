@@ -342,7 +342,8 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
   @override
   Future<void> setFocusPoint(Offset position) async {
     if (defaultTargetPlatform != TargetPlatform.iOS &&
-        defaultTargetPlatform != TargetPlatform.android) {
+        defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.macOS) {
       throw UnimplementedError('setFocusPoint() has not been implemented.');
     }
 
