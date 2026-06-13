@@ -11,37 +11,32 @@ class FileHandler {
       throw Exception('No assembled data to save');
     }
 
-    if (outputDirectory != null && outputDirectory.isNotEmpty) {
-      final dir = Directory(outputDirectory);
-      await dir.create(recursive: true);
-      final filename = _generateFilename(transfer);
-      final file = File('${dir.path}/$filename');
-      await file.writeAsBytes(transfer.assembled!);
-      return file.path;
-    }
-
-    try {
-      final dir = await getDownloadsDirectory();
-      if (dir == null) {
-        // Fallback to app documents
-        return _saveToAppDocs(transfer);
-      }
-
-      final filename = _generateFilename(transfer);
-      final file = File('${dir.path}/$filename');
-      await file.writeAsBytes(transfer.assembled!);
-      return file.path;
-    } catch (e) {
-      return _saveToAppDocs(transfer);
-    }
-  }
-
-  static Future<String> _saveToAppDocs(Transfer transfer) async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await resolveOutputDirectory(outputDirectory);
     final filename = _generateFilename(transfer);
     final file = File('${dir.path}/$filename');
     await file.writeAsBytes(transfer.assembled!);
     return file.path;
+  }
+
+  /// Resolves the directory transfers are saved to: [outputDirectory] if
+  /// given (creating it if necessary), otherwise the default downloads
+  /// directory (~/Downloads on macOS), falling back to the app's documents
+  /// directory.
+  static Future<Directory> resolveOutputDirectory(String? outputDirectory) async {
+    if (outputDirectory != null && outputDirectory.isNotEmpty) {
+      final dir = Directory(outputDirectory);
+      await dir.create(recursive: true);
+      return dir;
+    }
+
+    try {
+      final dir = await getDownloadsDirectory();
+      if (dir != null) return dir;
+    } catch (e) {
+      // Fall through to app documents.
+    }
+
+    return getApplicationDocumentsDirectory();
   }
 
   static String _generateFilename(Transfer transfer) {

@@ -3,9 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/camera_fps.dart';
 import '../models/camera_resolution.dart';
 import '../providers/settings_provider.dart';
+import '../services/file_handler.dart';
 
 class SettingsScreen extends StatefulWidget {
   final List<Map<String, String>> availableCameras;
@@ -51,6 +53,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _openOutputDirectory() async {
+    final settings = context.read<SettingsProvider>();
+    final dir = await FileHandler.resolveOutputDirectory(settings.outputDirectory);
+    await launchUrl(Uri.file(dir.path));
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
@@ -86,6 +94,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
+                      OutlinedButton.icon(
+                        onPressed: _openOutputDirectory,
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Open'),
+                      ),
+                      const SizedBox(width: 8),
                       OutlinedButton.icon(
                         onPressed: _pickOutputDirectory,
                         icon: const Icon(Icons.folder_open),
