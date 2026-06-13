@@ -12,8 +12,7 @@ dependencies:
     sdk: flutter
 
   # Camera & QR scanning
-  camera: ^0.10.5+5
-  mobile_scanner: ^4.0.0
+  mobile_scanner: ^7.0.0
 
   # State management
   provider: ^6.0.0
@@ -26,15 +25,23 @@ dependencies:
   # Data processing
   archive: ^3.4.0
   convert: ^3.1.1
+  crypto: ^3.0.7
 
-  # UI/UX
-  flutter_lints: ^3.0.0
+  # Persisted settings
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   integration_test:
     sdk: flutter
+  flutter_lints: ^3.0.0
+
+dependency_overrides:
+  # Local fork: adds macOS external-camera enumeration/selection
+  # (see third_party/mobile_scanner).
+  mobile_scanner:
+    path: third_party/mobile_scanner
 
 flutter:
   uses-material-design: true

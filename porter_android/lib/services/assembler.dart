@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import '../models/chunk.dart';
 import '../models/transfer.dart';
 import 'chunk_parser.dart';
 
 class Assembler {
   final Map<String, Transfer> transfers = {};
-  final Function(Transfer)? onProgress;
-  final Function(Transfer)? onComplete;
+  Function(Transfer)? onProgress;
+  Function(Transfer)? onComplete;
 
   Assembler({this.onProgress, this.onComplete});
 
