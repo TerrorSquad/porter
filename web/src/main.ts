@@ -25,12 +25,15 @@ interface RelayState {
 }
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
+const cameraWrap = document.getElementById('camera-wrap') as HTMLDivElement;
 const video = document.getElementById('video') as HTMLVideoElement;
 const scanCanvas = document.getElementById('scan-canvas') as HTMLCanvasElement;
 const camIdle = document.getElementById('cam-idle') as HTMLDivElement;
 const scanFlash = document.getElementById('scan-flash') as HTMLDivElement;
 const btnStart = document.getElementById('btn-start') as HTMLButtonElement;
 const btnStop = document.getElementById('btn-stop') as HTMLButtonElement;
+const cameraSelect = document.getElementById('camera-select') as HTMLSelectElement;
+const resolutionSelect = document.getElementById('resolution-select') as HTMLSelectElement;
 const btnResetAll = document.getElementById('btn-reset-all') as HTMLButtonElement;
 const transfersList = document.getElementById('transfers-list') as HTMLDivElement;
 const dropZone = document.getElementById('drop-zone') as HTMLDivElement;
@@ -45,6 +48,9 @@ const relayStatus = document.getElementById('relay-status') as HTMLSpanElement;
 let rafId = 0;
 let cameraRunning = false;
 let mediaStream: MediaStream | null = null;
+
+const LS_KEY_CAMERA = 'porter-receiver:camera-device-id';
+const LS_KEY_RESOLUTION = 'porter-receiver:camera-resolution';
 
 let statsTotal = 0;
 let statsNew = 0;
@@ -106,22 +112,96 @@ const assembler = new Assembler({
 btnStart.addEventListener('click', startCamera);
 btnStop.addEventListener('click', stopCamera);
 
-async function startCamera(): Promise<void> {
+// Restore saved resolution choice (camera choice is restored once the device list loads)
+{
+  const savedResolution = localStorage.getItem(LS_KEY_RESOLUTION);
+  if (savedResolution && resolutionSelect.querySelector(`option[value="${savedResolution}"]`)) {
+    resolutionSelect.value = savedResolution;
+  }
+}
+
+cameraSelect.addEventListener('change', () => {
+  localStorage.setItem(LS_KEY_CAMERA, cameraSelect.value);
+  if (cameraRunning) void restartCamera();
+});
+
+resolutionSelect.addEventListener('change', () => {
+  localStorage.setItem(LS_KEY_RESOLUTION, resolutionSelect.value);
+  if (cameraRunning) void restartCamera();
+});
+
+navigator.mediaDevices.addEventListener?.('devicechange', () => void refreshCameraList());
+void refreshCameraList();
+
+// Populate the camera dropdown with available video input devices, preserving
+// the saved/selected device where possible (labels only appear after permission).
+async function refreshCameraList(): Promise<void> {
+  let devices: MediaDeviceInfo[];
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    });
+    devices = await navigator.mediaDevices.enumerateDevices();
+  } catch {
+    return;
+  }
+  const cams = devices.filter((d) => d.kind === 'videoinput');
+  if (cams.length === 0) return;
+
+  const previous = cameraSelect.value || localStorage.getItem(LS_KEY_CAMERA) || '';
+  const options = ['<option value="">Default</option>'];
+  for (const [i, cam] of cams.entries()) {
+    options.push(
+      `<option value="${escHtml(cam.deviceId)}">${escHtml(cam.label || `Camera ${i + 1}`)}</option>`,
+    );
+  }
+  cameraSelect.innerHTML = options.join('');
+  if (previous && cams.some((d) => d.deviceId === previous)) {
+    cameraSelect.value = previous;
+  }
+}
+
+function currentResolution(): { width: number; height: number } {
+  const [width, height] = resolutionSelect.value.split('x').map(Number);
+  return { width: width || 1280, height: height || 720 };
+}
+
+async function startCamera(): Promise<void> {
+  const { width, height } = currentResolution();
+  const deviceId = cameraSelect.value;
+
+  const constraintsFor = (withDevice: boolean): MediaStreamConstraints => ({
+    video: {
+      ...(withDevice && deviceId
+        ? { deviceId: { exact: deviceId } }
+        : { facingMode: { ideal: 'environment' } }),
+      width: { ideal: width },
+      height: { ideal: height },
+      aspectRatio: { ideal: width / height },
+    },
+  });
+
+  try {
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraintsFor(true));
+    } catch (err) {
+      // Saved camera may no longer exist — fall back to the default device
+      if (!deviceId) throw err;
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraintsFor(false));
+    }
     video.srcObject = mediaStream;
     await video.play();
     cameraRunning = true;
     camIdle.classList.add('hidden');
     btnStart.disabled = true;
     btnStop.disabled = false;
+
+    // Match the preview box to whatever shape the camera actually delivered
+    // (cameras often can't hit an exact square and will return their closest fit).
+    const settings = mediaStream.getVideoTracks()[0]?.getSettings();
+    const actualW = settings?.width ?? width;
+    const actualH = settings?.height ?? height;
+    cameraWrap.style.aspectRatio = `${actualW} / ${actualH}`;
+
     scanLoop();
+    void refreshCameraList();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     alert(`Camera error: ${msg}\n\nMake sure the page is served over HTTPS or localhost.`);
@@ -135,8 +215,14 @@ function stopCamera(): void {
   mediaStream = null;
   video.srcObject = null;
   camIdle.classList.remove('hidden');
+  cameraWrap.style.aspectRatio = '';
   btnStart.disabled = false;
   btnStop.disabled = true;
+}
+
+async function restartCamera(): Promise<void> {
+  stopCamera();
+  await startCamera();
 }
 
 function scanLoop(): void {

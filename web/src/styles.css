@@ -1,31 +1,42 @@
 /* ── Reset ───────────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 /* ── Tokens ──────────────────────────────────────────────────────────────── */
 :root {
-  --bg:           #0d0f15;
-  --surface:      #171921;
-  --surface-2:    #1e2130;
-  --border:       #272b3a;
-  --green:        #00e676;
-  --green-dim:    #00796b;
-  --green-glow:   rgba(0, 230, 118, 0.25);
-  --text:         #dde1ee;
-  --text-dim:     #6b7280;
-  --red:          #ef5350;
-  --yellow:       #ffb300;
-  --blue:         #40c4ff;
-  --radius:       8px;
-  --radius-sm:    4px;
-  --font-mono:    'Menlo', 'Consolas', 'Courier New', monospace;
+  --bg: #0d0f15;
+  --surface: #171921;
+  --surface-2: #1e2130;
+  --border: #272b3a;
+  --green: #00e676;
+  --green-dim: #00796b;
+  --green-glow: rgba(0, 230, 118, 0.25);
+  --text: #dde1ee;
+  --text-dim: #6b7280;
+  --red: #ef5350;
+  --yellow: #ffb300;
+  --blue: #40c4ff;
+  --radius: 8px;
+  --radius-sm: 4px;
+  --font-mono: 'Menlo', 'Consolas', 'Courier New', monospace;
 }
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
-html, body {
+html,
+body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -56,9 +67,16 @@ html, body {
   color: var(--text-dim);
   margin-left: auto;
 }
-.hud-num  { font-family: var(--font-mono); font-weight: 600; }
-.hud-green { color: var(--green); }
-.hud-dim   { color: var(--text-dim); }
+.hud-num {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.hud-green {
+  color: var(--green);
+}
+.hud-dim {
+  color: var(--text-dim);
+}
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .layout {
@@ -71,7 +89,9 @@ html, body {
 }
 
 @media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; }
+  .layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Camera wrap ─────────────────────────────────────────────────────────── */
@@ -105,13 +125,21 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(0,0,0,0.75);
+  background: rgba(0, 0, 0, 0.75);
   gap: 0.5rem;
 }
-.idle-icon { font-size: 2.5rem; color: var(--text-dim); }
-.idle-text { color: var(--text-dim); font-size: 0.85rem; }
+.idle-icon {
+  font-size: 2.5rem;
+  color: var(--text-dim);
+}
+.idle-text {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
 
-.cam-idle.hidden { display: none; }
+.cam-idle.hidden {
+  display: none;
+}
 
 /* Flash ring on new unique chunk */
 .scan-flash {
@@ -123,7 +151,84 @@ html, body {
   pointer-events: none;
   transition: opacity 0.15s ease;
 }
-.scan-flash.active { opacity: 1; }
+.scan-flash.active {
+  opacity: 1;
+}
+
+/* ── Camera settings ─────────────────────────────────────────────────────── */
+.cam-settings {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cam-setting {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 160px;
+}
+
+.cam-setting-label {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cam-select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-family: inherit;
+}
+.cam-select:focus {
+  outline: 2px solid var(--blue);
+  border-color: transparent;
+}
+
+/* ── Camera settings ─────────────────────────────────────────────────────── */
+.cam-settings {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cam-setting {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 160px;
+}
+
+.cam-setting-label {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cam-select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-family: inherit;
+}
+.cam-select:focus { outline: 2px solid var(--blue); border-color: transparent; }
 
 /* ── Camera controls ─────────────────────────────────────────────────────── */
 .cam-controls {
@@ -140,17 +245,21 @@ html, body {
   padding: 1.25rem;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .drop-zone:hover,
 .drop-zone.drag-over {
   border-color: var(--green-dim);
-  background: rgba(0,230,118,0.04);
+  background: rgba(0, 230, 118, 0.04);
 }
 
 /* Hide the real input, click on label triggers it */
-#file-input { display: none; }
+#file-input {
+  display: none;
+}
 
 .drop-label {
   display: flex;
@@ -160,9 +269,16 @@ html, body {
   cursor: pointer;
   color: var(--text-dim);
 }
-.drop-label strong { color: var(--text); }
-.drop-icon { font-size: 1.6rem; color: var(--green-dim); }
-.drop-hint { font-size: 0.72rem; }
+.drop-label strong {
+  color: var(--text);
+}
+.drop-icon {
+  font-size: 1.6rem;
+  color: var(--green-dim);
+}
+.drop-hint {
+  font-size: 0.72rem;
+}
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 button {
@@ -176,15 +292,38 @@ button {
   font-family: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.1s, filter 0.1s;
+  transition:
+    opacity 0.1s,
+    filter 0.1s;
 }
-button:disabled { opacity: 0.35; cursor: not-allowed; }
-button:not(:disabled):hover { filter: brightness(1.1); }
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+button:not(:disabled):hover {
+  filter: brightness(1.1);
+}
 
-.btn-primary   { background: var(--green);  color: #000; }
-.btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
-.btn-ghost     { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
-.btn-download  { background: var(--green); color: #000; padding: 0.4rem 0.9rem; font-size: 0.8rem; }
+.btn-primary {
+  background: var(--green);
+  color: #000;
+}
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.btn-download {
+  background: var(--green);
+  color: #000;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+}
 .btn-reset-card {
   background: transparent;
   color: var(--text-dim);
@@ -193,10 +332,14 @@ button:not(:disabled):hover { filter: brightness(1.1); }
   font-size: 0.75rem;
   margin-left: auto;
 }
-.btn-reset-card:hover { color: var(--red); }
+.btn-reset-card:hover {
+  color: var(--red);
+}
 
 /* ── Transfers panel ─────────────────────────────────────────────────────── */
-.right-panel { min-width: 0; }
+.right-panel {
+  min-width: 0;
+}
 
 .panel-title {
   font-size: 0.75rem;
@@ -216,8 +359,12 @@ button:not(:disabled):hover { filter: brightness(1.1); }
   align-items: center;
   gap: 0.4rem;
 }
-.empty-icon { font-size: 2rem; }
-.empty-hint { font-size: 0.78rem; }
+.empty-icon {
+  font-size: 2rem;
+}
+.empty-hint {
+  font-size: 0.78rem;
+}
 
 /* ── Transfer card ───────────────────────────────────────────────────────── */
 .transfer-card {
@@ -229,8 +376,12 @@ button:not(:disabled):hover { filter: brightness(1.1); }
   transition: border-color 0.2s;
 }
 
-.card-done  { border-color: var(--green-dim); }
-.card-error { border-color: var(--red); }
+.card-done {
+  border-color: var(--green-dim);
+}
+.card-error {
+  border-color: var(--red);
+}
 
 .card-header {
   display: flex;
@@ -257,11 +408,27 @@ button:not(:disabled):hover { filter: brightness(1.1); }
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.badge-mode       { background: var(--surface-2); color: var(--blue);      border: 1px solid var(--border); }
-.badge-scanning   { background: rgba(255,179,0,0.15); color: var(--yellow); }
-.badge-assembling { background: rgba(64,196,255,0.12); color: var(--blue);  }
-.badge-done       { background: rgba(0,230,118,0.15);  color: var(--green); }
-.badge-error      { background: rgba(239,83,80,0.18);  color: var(--red);   }
+.badge-mode {
+  background: var(--surface-2);
+  color: var(--blue);
+  border: 1px solid var(--border);
+}
+.badge-scanning {
+  background: rgba(255, 179, 0, 0.15);
+  color: var(--yellow);
+}
+.badge-assembling {
+  background: rgba(64, 196, 255, 0.12);
+  color: var(--blue);
+}
+.badge-done {
+  background: rgba(0, 230, 118, 0.15);
+  color: var(--green);
+}
+.badge-error {
+  background: rgba(239, 83, 80, 0.18);
+  color: var(--red);
+}
 
 /* ── Progress ────────────────────────────────────────────────────────────── */
 .progress-bar {
@@ -310,9 +477,16 @@ button:not(:disabled):hover { filter: brightness(1.1); }
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--surface); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 99px;
+}
 
 /* ── Relay bar (header) ──────────────────────────────────────────────────── */
 .relay-bar {
@@ -323,7 +497,9 @@ button:not(:disabled):hover { filter: brightness(1.1); }
   color: var(--text-dim);
 }
 
-.relay-label { white-space: nowrap; }
+.relay-label {
+  white-space: nowrap;
+}
 
 .relay-input {
   flex: 1;
@@ -336,7 +512,10 @@ button:not(:disabled):hover { filter: brightness(1.1); }
   font-size: 0.78rem;
   font-family: var(--font-mono);
 }
-.relay-input:focus { outline: 2px solid var(--blue); border-color: transparent; }
+.relay-input:focus {
+  outline: 2px solid var(--blue);
+  border-color: transparent;
+}
 
 .relay-status {
   width: 0.55rem;
@@ -346,8 +525,14 @@ button:not(:disabled):hover { filter: brightness(1.1); }
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
-.relay-ok  { background: var(--green) !important; border-color: transparent; }
-.relay-err { background: var(--red)   !important; border-color: transparent; }
+.relay-ok {
+  background: var(--green) !important;
+  border-color: transparent;
+}
+.relay-err {
+  background: var(--red) !important;
+  border-color: transparent;
+}
 
 /* ── Relay row (inside transfer card) ───────────────────────────────────── */
 .relay-row {
@@ -363,12 +548,27 @@ button:not(:disabled):hover { filter: brightness(1.1); }
   padding: 0.05rem 0.3rem;
   border-radius: 3px;
 }
-.relay-row-pending { opacity: 0.5; }
-.relay-row-active  { color: var(--blue); }
-.relay-row-ok      { color: var(--green); }
-.relay-row-err     { color: var(--red); }
+.relay-row-pending {
+  opacity: 0.5;
+}
+.relay-row-active {
+  color: var(--blue);
+}
+.relay-row-ok {
+  color: var(--green);
+}
+.relay-row-err {
+  color: var(--red);
+}
 
 /* ── Checksum badges ─────────────────────────────────────────────────────── */
-.badge-verified       { background: rgba(0,230,118,0.18); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
-.badge-checksum-fail  { background: rgba(239,83,80,0.2);  color: var(--red);   border: 1px solid rgba(239,83,80,0.35); }
-
+.badge-verified {
+  background: rgba(0, 230, 118, 0.18);
+  color: var(--green);
+  border: 1px solid rgba(0, 230, 118, 0.3);
+}
+.badge-checksum-fail {
+  background: rgba(239, 83, 80, 0.2);
+  color: var(--red);
+  border: 1px solid rgba(239, 83, 80, 0.35);
+}

@@ -44,6 +44,30 @@
         <div class="scan-flash" id="scan-flash" aria-hidden="true"></div>
       </div>
 
+      <div class="cam-settings">
+        <label class="cam-setting">
+          <span class="cam-setting-label">Camera</span>
+          <select id="camera-select" class="cam-select">
+            <option value="">Default</option>
+          </select>
+        </label>
+        <label class="cam-setting">
+          <span class="cam-setting-label">Resolution</span>
+          <select id="resolution-select" class="cam-select">
+            <optgroup label="Widescreen">
+              <option value="640x480">480p (640×480)</option>
+              <option value="1280x720" selected>720p (1280×720)</option>
+              <option value="1920x1080">1080p (1920×1080)</option>
+              <option value="3840x2160">4K (3840×2160)</option>
+            </optgroup>
+            <optgroup label="Square">
+              <option value="720x720">Square (720×720)</option>
+              <option value="1080x1080">Square (1080×1080)</option>
+            </optgroup>
+          </select>
+        </label>
+      </div>
+
       <div class="cam-controls">
         <button id="btn-start" class="btn-primary">▶ Start camera</button>
         <button id="btn-stop"  class="btn-secondary" disabled>■ Stop</button>
