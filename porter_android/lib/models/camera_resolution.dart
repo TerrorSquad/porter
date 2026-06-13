@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'camera_fps.dart';
+
 /// Camera resolution presets offered in Settings, matching the options
 /// previously available in the web receiver's resolution selector.
 enum CameraResolutionPreset {
@@ -57,5 +59,25 @@ extension CameraResolutionPresetX on CameraResolutionPreset {
       case CameraResolutionPreset.square1080:
         return 'Square (1080×1080)';
     }
+  }
+
+  /// The highest frame rate this resolution is expected to support. Most
+  /// webcams (e.g. Logitech BRIO) cap 4K capture at 30fps even though they
+  /// support up to 60fps at lower resolutions.
+  int get maxFps {
+    switch (this) {
+      case CameraResolutionPreset.p4k:
+        return 30;
+      default:
+        return 60;
+    }
+  }
+
+  /// The frame-rate presets that make sense to offer for this resolution.
+  /// `auto` is always included.
+  List<CameraFpsPreset> get supportedFpsPresets {
+    return CameraFpsPreset.values
+        .where((preset) => preset.fps == null || preset.fps! <= maxFps)
+        .toList();
   }
 }

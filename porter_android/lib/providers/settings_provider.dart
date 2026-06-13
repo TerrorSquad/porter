@@ -71,6 +71,11 @@ class SettingsProvider extends ChangeNotifier {
       );
     }
 
+    if (!_cameraResolution.supportedFpsPresets.contains(_cameraFps)) {
+      _cameraFps = _cameraResolution.supportedFpsPresets.last;
+      await prefs.setString(_kCameraFpsKey, _cameraFps.name);
+    }
+
     _loaded = true;
     _readyCompleter.complete();
     notifyListeners();
@@ -98,10 +103,17 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> setCameraResolution(CameraResolutionPreset preset) async {
     _cameraResolution = preset;
+
+    // Drop frame rates the new resolution doesn't support (e.g. 60fps at 4K).
+    if (!preset.supportedFpsPresets.contains(_cameraFps)) {
+      _cameraFps = preset.supportedFpsPresets.last;
+    }
+
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kCameraResolutionKey, preset.name);
+    await prefs.setString(_kCameraFpsKey, _cameraFps.name);
   }
 
   Future<void> setCameraFps(CameraFpsPreset preset) async {

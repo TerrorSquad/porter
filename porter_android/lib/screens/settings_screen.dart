@@ -171,7 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       context.read<SettingsProvider>().setCameraFps(preset);
                     }
                   },
-                  items: CameraFpsPreset.values
+                  items: settings.cameraResolution.supportedFpsPresets
                       .map(
                         (preset) => DropdownMenuItem(
                           value: preset,
