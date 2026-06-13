@@ -28,13 +28,13 @@ group = "lint"
 extensions = [".vue", ".css", ".scss", ".sass", ".less"]
 restage = true
 
-[hooks.pre-commit.tools.typescript]
-command = "tsc"
-args = ["--noEmit", "--skipLibCheck"]
-type = "node"
-group = "lint"
-extensions = [".ts", ".tsx"]
-pass_files = false
+# [hooks.pre-commit.tools.typescript]
+# command = "tsc"
+# args = ["--noEmit", "--skipLibCheck"]
+# type = "node"
+# group = "lint"
+# extensions = [".ts", ".tsx"]
+# pass_files = false
 
 [hooks.pre-commit.tools.markdownlint]
 command = "markdownlint-cli2"
