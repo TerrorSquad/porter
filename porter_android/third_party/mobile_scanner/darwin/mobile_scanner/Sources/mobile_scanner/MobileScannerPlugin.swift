@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreImage
 import CoreMedia
 import Vision
 import VideoToolbox
@@ -47,6 +48,22 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     var position = AVCaptureDevice.Position.back
     
     var standardZoomFactor: CGFloat = 1
+
+#if os(macOS)
+    /// AVFoundation has no `videoZoomFactor` API on macOS, so zoom is applied
+    /// in software by cropping and rescaling captured frames. 1.0 means no
+    /// zoom; `maxZoomFactor` corresponds to a [MobileScannerState.zoomScale]
+    /// of 1.0.
+    var zoomFactor: CGFloat = 1
+    let maxZoomFactor: CGFloat = 4
+
+    let zoomContext: CIContext = {
+        if let metalDevice = MTLCreateSystemDefaultDevice() {
+            return CIContext(mtlDevice: metalDevice)
+        }
+        return CIContext()
+    }()
+#endif
 
 #if os(iOS)
     var interfaceOrientationObserver: NSObjectProtocol?
@@ -156,7 +173,17 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             return
         }
+
+#if os(macOS)
+        if zoomFactor > 1, let zoomedBuffer = applyZoom(to: imageBuffer, factor: zoomFactor) {
+            latestBuffer = zoomedBuffer
+        } else {
+            latestBuffer = imageBuffer
+        }
+#else
         latestBuffer = imageBuffer
+#endif
+
         registry.textureFrameAvailable(textureId)
         
         let currentTime = Date().timeIntervalSince1970
@@ -415,6 +442,12 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         
         // Check the zoom factor at switching from ultra wide camera to wide camera.
         standardZoomFactor = 1
+#if os(macOS)
+        // Reset software zoom and let the slider start at "no zoom" rather
+        // than the default `MobileScannerState.zoomScale` of 1 (max zoom).
+        zoomFactor = 1
+        sink?(["name": "zoomScaleState", "data": 0.0])
+#endif
 #if os(iOS)
         if #available(iOS 13.0, *) {
             for (index, actualDevice) in device.constituentDevices.enumerated() {
@@ -761,18 +794,23 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             throw MobileScannerError.zoomWhenStopped
         }
 
-        do {
 #if os(iOS)
+        do {
                 try device.lockForConfiguration()
                 // Limit to 1.0 scale
                 device.videoZoomFactor = getSafeZoomFactor(scale: scale)
 
                 device.unlockForConfiguration()
-#endif
         } catch {
             throw MobileScannerError.zoomError(error)
         }
-
+#else
+        // AVFoundation has no `videoZoomFactor` API on macOS, so zoom is
+        // applied in software by `applyZoom(to:factor:)` in `captureOutput`.
+        let clampedScale = min(max(scale, 0), 1)
+        zoomFactor = 1 + clampedScale * (maxZoomFactor - 1)
+        sink?(["name": "zoomScaleState", "data": Double(clampedScale)])
+#endif
     }
     
     private func setFocus(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
@@ -856,15 +894,18 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             throw MobileScannerError.zoomWhenStopped
         }
 
-        do {
 #if os(iOS)
+        do {
                 try device.lockForConfiguration()
                 device.videoZoomFactor = standardZoomFactor
                 device.unlockForConfiguration()
-#endif
         } catch {
             throw MobileScannerError.zoomError(error)
         }
+#else
+        zoomFactor = 1
+        sink?(["name": "zoomScaleState", "data": 0.0])
+#endif
     }
     
     func getSafeZoomFactor(scale: CGFloat) -> CGFloat {
@@ -884,6 +925,41 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     func getScaleFromZoomFactor(actualScale: CGFloat) -> CGFloat {
         return (actualScale - 1) / 4
     }
+
+#if os(macOS)
+    /// Crops the center of `pixelBuffer` according to `factor` and scales it
+    /// back up to the original dimensions, producing a digital zoom effect.
+    private func applyZoom(to pixelBuffer: CVPixelBuffer, factor: CGFloat) -> CVPixelBuffer? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+
+        let cropWidth = CGFloat(width) / factor
+        let cropHeight = CGFloat(height) / factor
+        let originX = (CGFloat(width) - cropWidth) / 2
+        let originY = (CGFloat(height) - cropHeight) / 2
+
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            .cropped(to: CGRect(x: originX, y: originY, width: cropWidth, height: cropHeight))
+            .transformed(by: CGAffineTransform(translationX: -originX, y: -originY))
+            .transformed(by: CGAffineTransform(scaleX: factor, y: factor))
+
+        var outputBuffer: CVPixelBuffer?
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferPixelFormatTypeKey: CVPixelBufferGetPixelFormatType(pixelBuffer),
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+        ]
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+                                          CVPixelBufferGetPixelFormatType(pixelBuffer),
+                                          attributes as CFDictionary, &outputBuffer)
+
+        guard status == kCVReturnSuccess, let output = outputBuffer else {
+            return nil
+        }
+
+        zoomContext.render(ciImage, to: output)
+        return output
+    }
+#endif
 
     private func toggleTorch(_ result: @escaping FlutterResult) {
         guard let device = self.device else {
