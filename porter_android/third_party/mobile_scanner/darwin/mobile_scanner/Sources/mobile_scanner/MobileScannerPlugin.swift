@@ -434,6 +434,20 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             return
         }
 
+#if os(macOS)
+        // Many macOS cameras (e.g. external webcams) start in `.locked` focus
+        // mode and never refocus on their own. Enable continuous autofocus
+        // where supported so the picture stays sharp without user input.
+        if device.isFocusModeSupported(.continuousAutoFocus) {
+            do {
+                try device.lockForConfiguration()
+                device.focusMode = .continuousAutoFocus
+                device.unlockForConfiguration()
+            } catch {
+                // Ignore; keep whatever focus mode the device defaults to.
+            }
+        }
+#endif
         device.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.torchMode), options: .new, context: nil)
 #if os(iOS)
         device.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.videoZoomFactor), options: [.new, .initial], context: nil)
@@ -823,7 +837,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 return
             }
             let focusPoint = CGPoint(x: dx, y: dy)
-        
+
         do {
             if (device == nil) {
                 throw MobileScannerError.zoomWhenStopped
@@ -836,6 +850,17 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                     if device.isFocusModeSupported(.autoFocus) {
                         device.focusMode = .autoFocus
                     }
+                    device.unlockForConfiguration()
+                } catch {
+                    throw MobileScannerError.zoomError(error)
+                }
+            } else if device.isFocusModeSupported(.continuousAutoFocus) {
+                // This device has no focus point of interest (e.g. some
+                // external webcams), so a specific tap location can't steer
+                // focus. Re-trigger continuous autofocus as a best effort.
+                do {
+                    try device.lockForConfiguration()
+                    device.focusMode = .continuousAutoFocus
                     device.unlockForConfiguration()
                 } catch {
                     throw MobileScannerError.zoomError(error)
