@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreMedia
 import Vision
 import VideoToolbox
 
@@ -448,6 +449,10 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         }
         captureSession!.sessionPreset = AVCaptureSession.Preset.high
 
+        if let resolution = argReader.intArray(key: "cameraResolution"), resolution.count == 2 {
+            applyCameraResolution(device: device, width: resolution[0], height: resolution[1])
+        }
+
         let videoOutput = AVCaptureVideoDataOutput()
 
         let format = getPreferredVideoFormat(videoOutput: videoOutput)
@@ -537,6 +542,45 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
                 result(answer)
             }
+        }
+    }
+
+    /// Configure the capture session and device to use a format whose
+    /// dimensions are at least `width` x `height`, preferring the smallest
+    /// such format. Falls back to the largest available format if none are
+    /// big enough. If no format can be applied, the session keeps its
+    /// current (`.high`) preset.
+    private func applyCameraResolution(device: AVCaptureDevice, width: Int, height: Int) {
+        var bestFormat: AVCaptureDevice.Format?
+        var bestArea = Int.max
+        var largestFormat: AVCaptureDevice.Format?
+        var largestArea = -1
+
+        for format in device.formats {
+            let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            let area = Int(dimensions.width) * Int(dimensions.height)
+
+            if Int(dimensions.width) >= width && Int(dimensions.height) >= height && area < bestArea {
+                bestArea = area
+                bestFormat = format
+            }
+
+            if area > largestArea {
+                largestArea = area
+                largestFormat = format
+            }
+        }
+
+        guard let chosenFormat = bestFormat ?? largestFormat else {
+            return
+        }
+
+        do {
+            try device.lockForConfiguration()
+            device.activeFormat = chosenFormat
+            device.unlockForConfiguration()
+        } catch {
+            // Keep the `.high` session preset applied by the caller.
         }
     }
 
@@ -1043,6 +1087,10 @@ class MapArgumentReader {
 
     func stringArray(key: String) -> [String]? {
         return args?[key] as? [String]
+    }
+
+    func intArray(key: String) -> [Int]? {
+        return (args?[key] as? [Any])?.compactMap { ($0 as? NSNumber)?.intValue }
     }
 
     func toSymbology() -> [VNBarcodeSymbology] {

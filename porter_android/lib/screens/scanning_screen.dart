@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
+import '../models/camera_resolution.dart';
 import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
 import 'settings_screen.dart';
@@ -17,13 +18,17 @@ class _ScanningScreenState extends State<ScanningScreen> {
   late MobileScannerController controller;
   List<Map<String, String>> _availableCameras = [];
   String? _activeCameraId;
+  CameraResolutionPreset _activeResolution = CameraResolutionPreset.p720;
   bool _ready = false;
   bool _restarting = false;
 
   @override
   void initState() {
     super.initState();
-    controller = MobileScannerController(autoStart: false);
+    controller = MobileScannerController(
+      autoStart: false,
+      cameraResolution: _activeResolution.size,
+    );
     _initCamera();
   }
 
@@ -57,6 +62,12 @@ class _ScanningScreenState extends State<ScanningScreen> {
     }
 
     _ready = true;
+
+    if (settings.cameraResolution != _activeResolution) {
+      await _applyResolutionChange(settings.cameraResolution);
+      return;
+    }
+
     await controller.start();
   }
 
@@ -69,6 +80,35 @@ class _ScanningScreenState extends State<ScanningScreen> {
     controller.cameraId = cameraId;
 
     await controller.stop();
+    await controller.start();
+
+    _restarting = false;
+  }
+
+  /// Recreates the scanner controller with the resolution selected in
+  /// Settings. The resolution is a constructor-only field, so the controller
+  /// must be disposed and replaced rather than just stopped and restarted.
+  Future<void> _applyResolutionChange(CameraResolutionPreset resolution) async {
+    if (_restarting) return;
+    _restarting = true;
+
+    final old = controller;
+    final next = MobileScannerController(
+      autoStart: false,
+      cameraResolution: resolution.size,
+    );
+    next.cameraId = _activeCameraId;
+
+    _activeResolution = resolution;
+    if (mounted) {
+      setState(() {
+        controller = next;
+      });
+    } else {
+      controller = next;
+    }
+
+    old.dispose();
     await controller.start();
 
     _restarting = false;
@@ -100,13 +140,17 @@ class _ScanningScreenState extends State<ScanningScreen> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
 
-    if (_ready &&
-        !_restarting &&
-        defaultTargetPlatform == TargetPlatform.macOS &&
-        settings.selectedCameraId != _activeCameraId) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _applyCameraChange(settings.selectedCameraId);
-      });
+    if (_ready && !_restarting) {
+      if (settings.cameraResolution != _activeResolution) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _applyResolutionChange(settings.cameraResolution);
+        });
+      } else if (defaultTargetPlatform == TargetPlatform.macOS &&
+          settings.selectedCameraId != _activeCameraId) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _applyCameraChange(settings.selectedCameraId);
+        });
+      }
     }
 
     return Scaffold(
@@ -137,6 +181,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
             children: [
               Expanded(
                 child: MobileScanner(
+                  key: ValueKey(controller),
                   controller: controller,
                   onDetect: _handleQRDetected,
                 ),
