@@ -1,0 +1,40 @@
+name: porter_receiver
+description: Porter offline file transfer receiver for Android and macOS.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Camera & QR scanning
+  camera: ^0.10.5+5
+  mobile_scanner: ^4.0.0
+
+  # State management
+  provider: ^6.0.0
+
+  # File handling
+  path_provider: ^2.1.0
+  file_picker: ^6.0.0
+  share_plus: ^7.2.0
+
+  # Data processing
+  archive: ^3.4.0
+  convert: ^3.1.1
+
+  # UI/UX
+  flutter_lints: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
