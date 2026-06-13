@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -21,6 +23,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
   CameraResolutionPreset _activeResolution = CameraResolutionPreset.p720;
   bool _ready = false;
   bool _restarting = false;
+  Timer? _rateTimer;
 
   @override
   void initState() {
@@ -30,6 +33,12 @@ class _ScanningScreenState extends State<ScanningScreen> {
       cameraResolution: _activeResolution.size,
     );
     _initCamera();
+
+    // Refresh periodically so the scans/sec readout decays toward 0 between
+    // scans, not just when a new one comes in.
+    _rateTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _initCamera() async {
@@ -116,8 +125,15 @@ class _ScanningScreenState extends State<ScanningScreen> {
 
   @override
   void dispose() {
+    _rateTimer?.cancel();
     controller.dispose();
     super.dispose();
+  }
+
+  String _hudText(ScannerProvider provider) {
+    final scanned = provider.totalScanned + provider.duplicatesSkipped;
+    final rate = provider.scansPerSecond;
+    return 'scanned $scanned · new ${provider.totalScanned} · dupes ${provider.duplicatesSkipped} · ${rate.toStringAsFixed(1)}/s';
   }
 
   void _handleQRDetected(BarcodeCapture capture) {
@@ -205,13 +221,18 @@ class _ScanningScreenState extends State<ScanningScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Total scanned: ${provider.totalScanned} | Duplicates: ${provider.duplicatesSkipped}',
+                        _hudText(provider),
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ] else ...[
                       Text(
                         'Point camera at QR codes',
                         style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _hudText(provider),
+                        style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ],
                     const SizedBox(height: 16),
