@@ -1,7 +1,6 @@
 packages:
   - '.'
   - 'nodejs'
-  - 'web'
 
 onlyBuiltDependencies:
   - core-js

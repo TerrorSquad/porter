@@ -1,8 +1,0 @@
-.DS_Store
-*.swp
-*.swo
-*.log
-
-# Node.js workspace
-node_modules
-dist

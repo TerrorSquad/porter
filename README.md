@@ -19,15 +19,8 @@ pnpm run build:slim
 
 **→ See [nodejs/README.md](nodejs/README.md) for detailed installation & usage**
 
-### Web Receiver
-```bash
-cd web
-pnpm install
-pnpm run dev
-# → Open http://localhost:5173 on your phone to scan QR codes
-```
-
 ### HTTP Receiver (porter serve)
+
 ```bash
 cd nodejs
 ./dist/porter.mjs serve --port=8080
@@ -38,11 +31,10 @@ cd nodejs
 
 ## 📚 Documentation
 
-| Document | Purpose |
-|----------|---------|
-| **[nodejs/README.md](nodejs/README.md)** | Node.js sender, receiver, join, build presets |
-| **[web/README.md](web/README.md)** | Web receiver — camera scanning and file assembly |
-| **[ANDROID_APP_SPEC.md](ANDROID_APP_SPEC.md)** | Flutter receiver app spec |
+| Document                                       | Purpose                                       |
+| ---------------------------------------------- | --------------------------------------------- |
+| **[nodejs/README.md](nodejs/README.md)**       | Node.js sender, receiver, join, build presets |
+| **[ANDROID_APP_SPEC.md](ANDROID_APP_SPEC.md)** | Flutter receiver app spec                     |
 
 ---
 
@@ -75,7 +67,7 @@ Offline Computer              Phone / Receiver
 ✅ **Fast** — 2-10 chunks/sec depending on lighting  
 ✅ **Portable** — ~20 KB executable, runs on Node.js 18+  
 ✅ **Reliable** — Header protocol handles dropped/reordered chunks  
-✅ **Flexible** — Works with any camera, terminal, phone OS  
+✅ **Flexible** — Works with any camera, terminal, phone OS
 
 ---
 
@@ -91,11 +83,7 @@ Offline Computer              Phone / Receiver
 │   ├── dist/              # Ignored generated Node builds
 │   ├── package.json
 │   └── test-porter.sh
-├── web/
-│   ├── src/               # TypeScript + Vite receiver UI
-│   │   ├── assembler.ts   # Chunk parsing and SHA-256 verification
-│   │   └── main.ts        # Camera loop, drag-and-drop, relay to porter serve
-│   └── index.html
+├── porter_android/        # Flutter receiver app (Android/macOS)
 ├── mise.toml
 ├── ANDROID_APP_SPEC.md
 └── README.md
@@ -108,7 +96,6 @@ Offline Computer              Phone / Receiver
 The Porter sender generates scannable QR codes. You can build a receiver app in any language:
 
 - **Flutter Reference:** See [ANDROID_APP_SPEC.md](ANDROID_APP_SPEC.md) for specifications
-- **Web:** Use a WebRTC camera library to scan and reassemble
 - **CLI:** Use any QR library to decode chunks and rebuild the file
 
 All you need is the chunk format: `index|total|mode|id|payload`
@@ -117,23 +104,23 @@ All you need is the chunk format: `index|total|mode|id|payload`
 
 ## 🔧 Technology
 
-| Component | Purpose |
-|-----------|---------|
-| **Rollup** | Bundle TypeScript → single-file JS |
+| Component            | Purpose                                     |
+| -------------------- | ------------------------------------------- |
+| **Rollup**           | Bundle TypeScript → single-file JS          |
 | **qrcode-generator** | QR matrix generation for terminal rendering |
-| **Node.js Crypto** | MD5 checksums |
-| **Zlib** | Server-side gzip |
+| **Node.js Crypto**   | MD5 checksums                               |
+| **Zlib**             | Server-side gzip                            |
 
 ---
 
 ## 📊 Performance
 
-| Metric | Value |
-|--------|-------|
-| Executable size | 8.1 KB |
-| With dependencies | 2 MB |
-| Default speed | 2 chunks/sec |
-| Max speed | 10 chunks/sec |
+| Metric                | Value               |
+| --------------------- | ------------------- |
+| Executable size       | 8.1 KB              |
+| With dependencies     | 2 MB                |
+| Default speed         | 2 chunks/sec        |
+| Max speed             | 10 chunks/sec       |
 | Typical file transfer | 100K file ≈ 3-5 min |
 
 ---
@@ -151,6 +138,7 @@ All you need is the chunk format: `index|total|mode|id|payload`
 ## 🛠️ Usage
 
 ### Node.js Version
+
 ```bash
 cd nodejs
 ./dist/porter.slideshow-only.mjs myfile.pdf --speed=0.3
@@ -170,7 +158,7 @@ cd nodejs
 
 ### Workspace Prerequisites
 
-- Node.js `24.13.0` and `pnpm 10.30.1` for `nodejs/` and `web/`
+- Node.js `24.13.0` and `pnpm 10.30.1` for `nodejs/`
 - `mise` is optional; the repo already defines matching tasks in `mise.toml`
 
 ### Node.js Builds
@@ -206,6 +194,7 @@ mise run node-build
 ## 🤝 Contributing
 
 This is a hobby project, but PRs welcome for:
+
 - Performance improvements
 - Better error messages
 - New platforms (iOS, desktop apps)
