@@ -228,9 +228,9 @@ function runSender() {
   if (FEATURE_MULTI_QR && flags['--multi']) {
     const multiVal = flags['--multi'].toLowerCase();
     if (multiVal === 'auto') {
-      // Auto-detect based on terminal width (rough heuristic: 29 chars per small QR + 2 char gap)
-      const termWidth = process.stdout.columns || 80;
-      multiQr = Math.max(1, Math.min(4, Math.floor(termWidth / 31)));
+      // Request the max grid size; Renderer.effectiveMultiQr() fits the
+      // actual per-frame count to the terminal (and re-fits on resize).
+      multiQr = 4;
     } else {
       const parsed = parseInt(multiVal);
       if (!isNaN(parsed) && parsed >= 1 && parsed <= 4) {
