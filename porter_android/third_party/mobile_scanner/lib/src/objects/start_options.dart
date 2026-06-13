@@ -12,6 +12,7 @@ class StartOptions {
     required this.cameraDirection,
     required this.cameraLensType,
     required this.cameraResolution,
+    this.cameraFps,
     required this.detectionSpeed,
     required this.detectionTimeoutMs,
     required this.formats,
@@ -28,6 +29,12 @@ class StartOptions {
 
   /// The desired camera resolution for the scanner.
   final Size? cameraResolution;
+
+  /// The desired camera frame rate, in frames per second.
+  ///
+  /// When null, the camera's default frame rate for the active format is
+  /// used. Currently only supported on macOS.
+  final int? cameraFps;
 
   /// The preferred lens type for the camera.
   ///
@@ -83,6 +90,7 @@ class StartOptions {
           cameraResolution!.width.toInt(),
           cameraResolution!.height.toInt(),
         ],
+      if (cameraFps != null) 'cameraFps': cameraFps,
       'facing': cameraDirection.rawValue,
       'lensType': cameraLensType.rawValue,
       if (formats.isNotEmpty)

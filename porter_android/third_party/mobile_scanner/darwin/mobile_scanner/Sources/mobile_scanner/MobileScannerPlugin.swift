@@ -453,6 +453,10 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             applyCameraResolution(device: device, width: resolution[0], height: resolution[1])
         }
 
+        if let fps = argReader.int(key: "cameraFps") {
+            applyCameraFrameRate(device: device, fps: fps)
+        }
+
         let videoOutput = AVCaptureVideoDataOutput()
 
         let format = getPreferredVideoFormat(videoOutput: videoOutput)
@@ -581,6 +585,26 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             device.unlockForConfiguration()
         } catch {
             // Keep the `.high` session preset applied by the caller.
+        }
+    }
+
+    /// Requests a frame rate for the camera's active format, clamped to the
+    /// range the format actually supports.
+    private func applyCameraFrameRate(device: AVCaptureDevice, fps: Int) {
+        guard let range = device.activeFormat.videoSupportedFrameRateRanges.first else {
+            return
+        }
+
+        let clampedFps = min(max(Double(fps), range.minFrameRate), range.maxFrameRate)
+        let duration = CMTimeMake(value: 1, timescale: Int32(clampedFps))
+
+        do {
+            try device.lockForConfiguration()
+            device.activeVideoMinFrameDuration = duration
+            device.activeVideoMaxFrameDuration = duration
+            device.unlockForConfiguration()
+        } catch {
+            // Keep the format's default frame rate.
         }
     }
 
@@ -735,19 +759,19 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 throw MobileScannerError.zoomWhenStopped
             }
 
-    #if os(iOS)
-                if device.isFocusPointOfInterestSupported {
-                    do {
-                        try device.lockForConfiguration()
-                        device.focusPointOfInterest = focusPoint
+            if device.isFocusPointOfInterestSupported {
+                do {
+                    try device.lockForConfiguration()
+                    device.focusPointOfInterest = focusPoint
+                    if device.isFocusModeSupported(.autoFocus) {
                         device.focusMode = .autoFocus
-                        device.unlockForConfiguration()
-                    } catch {
-                        throw MobileScannerError.zoomError(error)
                     }
+                    device.unlockForConfiguration()
+                } catch {
+                    throw MobileScannerError.zoomError(error)
                 }
-    #endif
-        
+            }
+
             result(nil)
         } catch {
             result(FlutterError(code: MobileScannerErrorCodes.GENERIC_ERROR,

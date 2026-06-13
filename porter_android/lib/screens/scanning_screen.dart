@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
+import '../models/camera_fps.dart';
 import '../models/camera_resolution.dart';
 import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
@@ -22,6 +23,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
   List<Map<String, String>> _availableCameras = [];
   String? _activeCameraId;
   CameraResolutionPreset _activeResolution = CameraResolutionPreset.p720;
+  CameraFpsPreset _activeFps = CameraFpsPreset.auto;
   bool _ready = false;
   bool _restarting = false;
   Timer? _rateTimer;
@@ -33,6 +35,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
     controller = MobileScannerController(
       autoStart: false,
       cameraResolution: _activeResolution.size,
+      cameraFps: _activeFps.fps,
       // The default (DetectionSpeed.normal) imposes a 250ms gap between
       // scans, capping throughput at ~4/s regardless of camera speed.
       // noDuplicates removes that artificial gate and scans as fast as
@@ -79,8 +82,9 @@ class _ScanningScreenState extends State<ScanningScreen> {
 
     _ready = true;
 
-    if (settings.cameraResolution != _activeResolution) {
-      await _applyResolutionChange(settings.cameraResolution);
+    if (settings.cameraResolution != _activeResolution ||
+        settings.cameraFps != _activeFps) {
+      await _applyCameraConfigChange(settings.cameraResolution, settings.cameraFps);
       return;
     }
 
@@ -101,10 +105,14 @@ class _ScanningScreenState extends State<ScanningScreen> {
     _restarting = false;
   }
 
-  /// Recreates the scanner controller with the resolution selected in
-  /// Settings. The resolution is a constructor-only field, so the controller
-  /// must be disposed and replaced rather than just stopped and restarted.
-  Future<void> _applyResolutionChange(CameraResolutionPreset resolution) async {
+  /// Recreates the scanner controller with the resolution and frame rate
+  /// selected in Settings. Both are constructor-only fields, so the
+  /// controller must be disposed and replaced rather than just stopped and
+  /// restarted.
+  Future<void> _applyCameraConfigChange(
+    CameraResolutionPreset resolution,
+    CameraFpsPreset fps,
+  ) async {
     if (_restarting) return;
     _restarting = true;
 
@@ -112,11 +120,13 @@ class _ScanningScreenState extends State<ScanningScreen> {
     final next = MobileScannerController(
       autoStart: false,
       cameraResolution: resolution.size,
+      cameraFps: fps.fps,
       detectionSpeed: DetectionSpeed.noDuplicates,
     );
     next.cameraId = _activeCameraId;
 
     _activeResolution = resolution;
+    _activeFps = fps;
     if (mounted) {
       setState(() {
         controller = next;
@@ -195,9 +205,10 @@ class _ScanningScreenState extends State<ScanningScreen> {
     final settings = context.watch<SettingsProvider>();
 
     if (_ready && !_restarting) {
-      if (settings.cameraResolution != _activeResolution) {
+      if (settings.cameraResolution != _activeResolution ||
+          settings.cameraFps != _activeFps) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _applyResolutionChange(settings.cameraResolution);
+          _applyCameraConfigChange(settings.cameraResolution, settings.cameraFps);
         });
       } else if (defaultTargetPlatform == TargetPlatform.macOS &&
           settings.selectedCameraId != _activeCameraId) {
@@ -258,6 +269,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
                             key: ValueKey(controller),
                             controller: controller,
                             onDetect: _handleQRDetected,
+                            tapToFocus: true,
                           ),
                         ),
                       )
@@ -265,6 +277,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
                         key: ValueKey(controller),
                         controller: controller,
                         onDetect: _handleQRDetected,
+                        tapToFocus: true,
                       ),
               ),
               Container(

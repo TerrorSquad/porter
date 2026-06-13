@@ -28,6 +28,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   MobileScannerController({
     this.autoStart = true,
     this.cameraResolution,
+    this.cameraFps,
     this.lensType = CameraLensType.any,
     this.detectionSpeed = DetectionSpeed.normal,
     int detectionTimeoutMs = 250,
@@ -64,6 +65,12 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   ///
   /// Currently only supported on Android.
   final Size? cameraResolution;
+
+  /// The desired camera frame rate, in frames per second.
+  ///
+  /// When null, the camera's default frame rate for the active format is
+  /// used. Currently only supported on macOS.
+  final int? cameraFps;
 
   /// Automatically start the scanner on initialization.
   final bool autoStart;
@@ -459,6 +466,7 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
       cameraDirection: cameraDirection ?? facing,
       cameraLensType: cameraLensType ?? lensType,
       cameraResolution: cameraResolution,
+      cameraFps: cameraFps,
       detectionSpeed: detectionSpeed,
       detectionTimeoutMs: detectionTimeoutMs,
       formats: formats,

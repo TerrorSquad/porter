@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import '../models/camera_fps.dart';
 import '../models/camera_resolution.dart';
 import '../providers/settings_provider.dart';
 
@@ -120,6 +121,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     }
                   },
                   items: CameraResolutionPreset.values
+                      .map(
+                        (preset) => DropdownMenuItem(
+                          value: preset,
+                          child: Text(preset.label),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const _SectionHeader('Camera Frame Rate'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<CameraFpsPreset>(
+                  value: settings.cameraFps,
+                  isExpanded: true,
+                  dropdownColor: Theme.of(context).cardColor,
+                  onChanged: (preset) {
+                    if (preset != null) {
+                      context.read<SettingsProvider>().setCameraFps(preset);
+                    }
+                  },
+                  items: CameraFpsPreset.values
                       .map(
                         (preset) => DropdownMenuItem(
                           value: preset,
