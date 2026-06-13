@@ -113,9 +113,36 @@ class _TransferCardState extends State<TransferCard> {
     return null;
   }
 
-  // Filled in once HTTP relay (porter serve) support is wired up.
   Widget _buildRelayRow(BuildContext context, Transfer transfer) {
-    return const SizedBox.shrink();
+    final settings = context.watch<SettingsProvider>();
+    if (settings.relayUrl.isEmpty) return const SizedBox.shrink();
+
+    final provider = context.watch<ScannerProvider>();
+    final state = provider.relayStates[transfer.id];
+
+    String text;
+    Color color;
+    if (state == null) {
+      text = '○ Relay: waiting for first chunk…';
+      color = Colors.grey;
+    } else if (state.lastError != null) {
+      text = '✕ Relay: error — ${state.lastError}';
+      color = Colors.red.shade400;
+    } else if (state.joinedPath != null) {
+      text = '✓ Relay: joined → ${state.joinedPath}';
+      color = Colors.green.shade400;
+    } else if (state.complete) {
+      text = '✓ Relay: complete';
+      color = Colors.green.shade400;
+    } else {
+      text = '⇡ Relay: ${state.sent} chunk${state.sent != 1 ? 's' : ''} saved';
+      color = Colors.blue.shade300;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(text, style: TextStyle(color: color, fontSize: 12)),
+    );
   }
 
   @override

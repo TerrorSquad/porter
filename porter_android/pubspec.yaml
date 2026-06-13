@@ -30,6 +30,9 @@ dependencies:
   # Persisted settings
   shared_preferences: ^2.5.5
 
+  # Relay to porter serve
+  http: ^1.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

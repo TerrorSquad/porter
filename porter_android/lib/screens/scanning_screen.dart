@@ -137,12 +137,36 @@ class _ScanningScreenState extends State<ScanningScreen> {
     return 'scanned $scanned · new ${provider.totalScanned} · dupes ${provider.duplicatesSkipped} · ${rate.toStringAsFixed(1)}/s';
   }
 
+  Widget _buildHud(BuildContext context, ScannerProvider provider, SettingsProvider settings) {
+    final text = Text(_hudText(provider), style: Theme.of(context).textTheme.labelSmall);
+    if (settings.relayUrl.isEmpty) return text;
+
+    final Color dotColor;
+    if (provider.relayLastOk == true) {
+      dotColor = Colors.green;
+    } else if (provider.relayLastOk == false) {
+      dotColor = Colors.red;
+    } else {
+      dotColor = Colors.grey;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        text,
+        const SizedBox(width: 8),
+        Text('●', style: TextStyle(color: dotColor, fontSize: 12)),
+      ],
+    );
+  }
+
   void _handleQRDetected(BarcodeCapture capture) {
     final provider = context.read<ScannerProvider>();
+    final relayUrl = context.read<SettingsProvider>().relayUrl;
     for (final barcode in capture.barcodes) {
       final rawValue = barcode.rawValue;
       if (rawValue != null) {
-        provider.ingestQR(rawValue);
+        provider.ingestQR(rawValue, relayUrl: relayUrl);
 
         // Flash feedback
         controller.toggleTorch();
@@ -237,20 +261,14 @@ class _ScanningScreenState extends State<ScanningScreen> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        _hudText(provider),
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
+                      _buildHud(context, provider, settings),
                     ] else ...[
                       Text(
                         'Point camera at QR codes',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        _hudText(provider),
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
+                      _buildHud(context, provider, settings),
                     ],
                     const SizedBox(height: 16),
                     Row(
