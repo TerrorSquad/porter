@@ -3,7 +3,7 @@
 ## Project Structure
 
 ```
-porter_android/
+flutter/
 ├── lib/
 │   ├── main.dart                 # App entry point, theme setup
 │   ├── models/

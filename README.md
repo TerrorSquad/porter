@@ -83,7 +83,7 @@ Offline Computer              Phone / Receiver
 │   ├── dist/              # Ignored generated Node builds
 │   ├── package.json
 │   └── test-porter.sh
-├── porter_android/        # Flutter receiver app (Android/macOS)
+├── flutter/               # Flutter receiver app (Android/macOS)
 ├── mise.toml
 ├── ANDROID_APP_SPEC.md
 └── README.md

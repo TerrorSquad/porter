@@ -23,7 +23,7 @@ flutter doctor
 ### 2. Clone & Setup
 
 ```bash
-cd /home/gninkovic/Projects/sturdy-eureka/porter_android
+cd /home/gninkovic/Projects/sturdy-eureka/flutter
 
 # Get dependencies
 flutter pub get

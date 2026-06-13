@@ -212,12 +212,9 @@ joinedPath`, plus `error` (String?, set on network/parse failure).
   - `Map<String, RelayState> relayStates = {}`, `bool? relayLastOk`.
   - `ingestQR(String raw, {String? relayUrl})`: after local ingest, if `relayUrl != null &&
 relayUrl.isNotEmpty`, call `RelayService.upload(relayUrl, raw)` (fire-and-forget —
-    don't await before returning), then on completion:
-    - update `relayLastOk = result.error == null`
-    - if `result.transferId != null`, update/create `relayStates[result.transferId]`:
-      increment `sent` (or `failed` on error), set `complete`/`verified`/`joinedPath`/
-      `lastError` from the result
-    - `notifyListeners()`
+    don't await before returning), then on completion: - update `relayLastOk = result.error == null` - if `result.transferId != null`, update/create `relayStates[result.transferId]`:
+    increment `sent` (or `failed` on error), set `complete`/`verified`/`joinedPath`/
+    `lastError` from the result - `notifyListeners()`
 - `scanning_screen.dart`:
   - Pass `context.read<SettingsProvider>().relayUrl` into `ingestQR`.
   - HUD shows a relay status dot: hidden if `relayUrl.isEmpty`, else green (●) if
