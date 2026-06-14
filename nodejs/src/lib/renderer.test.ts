@@ -26,6 +26,25 @@ function withTerminalSize<T>(cols: number, rows: number, fn: () => T): T {
   }
 }
 
+const SYNC_BEGIN = '\x1b[?2026h';
+const SYNC_END = '\x1b[?2026l';
+
+/** Captures everything written to process.stdout while `fn` runs. */
+function captureStdout(fn: () => void): string {
+  const original = process.stdout.write.bind(process.stdout);
+  let captured = '';
+  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
+    captured += typeof chunk === 'string' ? chunk : chunk.toString();
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    fn();
+  } finally {
+    process.stdout.write = original;
+  }
+  return captured;
+}
+
 describe('Renderer QR sizing', () => {
   test('qrColumnWidth and qrRowHeight follow the version formula', () => {
     const r = makeRenderer();
@@ -99,6 +118,30 @@ describe('Renderer.effectiveMultiQr', () => {
     withTerminalSize(200, 60, () => {
       assert.strictEqual((r as any).effectiveMultiQr(), 1);
     });
+  });
+});
+
+describe('Renderer.draw atomic frames', () => {
+  test('wraps each rendered frame in synchronized-output markers', () => {
+    const r = makeRenderer();
+    r.setChunks(['1|1|T|AB|hello fountain'], 2);
+
+    const output = withTerminalSize(120, 40, () => captureStdout(() => r.draw()));
+
+    assert.ok(output.startsWith(SYNC_BEGIN), 'frame should start with BSU (begin sync)');
+    assert.ok(output.endsWith(SYNC_END), 'frame should end with ESU (end sync)');
+    // Exactly one synchronized region per frame — no nested/duplicate markers.
+    assert.strictEqual(output.split(SYNC_BEGIN).length - 1, 1);
+    assert.strictEqual(output.split(SYNC_END).length - 1, 1);
+  });
+
+  test('wraps the no-content frame too', () => {
+    const r = makeRenderer();
+    const output = withTerminalSize(120, 40, () => captureStdout(() => r.draw()));
+
+    assert.ok(output.startsWith(SYNC_BEGIN));
+    assert.ok(output.endsWith(SYNC_END));
+    assert.match(output, /No content to display/);
   });
 });
 
