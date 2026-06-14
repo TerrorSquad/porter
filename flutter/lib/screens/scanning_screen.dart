@@ -31,7 +31,6 @@ class _ScanningScreenState extends State<ScanningScreen> {
   bool _restarting = false;
   late final ScannerProvider _scannerProvider;
   Timer? _rateTimer;
-  DateTime? _lastFlashAt;
   Offset? _focusPoint;
   Timer? _focusIndicatorTimer;
 
@@ -317,20 +316,10 @@ class _ScanningScreenState extends State<ScanningScreen> {
           relayUrl: settings.relayUrl,
           outputDirectory: settings.outputDirectory,
         );
-
-        // Flash feedback, throttled so it doesn't fight the torch hardware
-        // (and the camera pipeline) at high scan rates.
-        final now = DateTime.now();
-        if (_lastFlashAt == null ||
-            now.difference(_lastFlashAt!) > const Duration(milliseconds: 300)) {
-          _lastFlashAt = now;
-          // Ignore torch errors if a detection fires before/during controller
-          // (re)initialization (e.g. right after start() or a camera switch).
-          controller.toggleTorch().catchError((_) {});
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (mounted) controller.toggleTorch().catchError((_) {});
-          });
-        }
+        // No per-scan torch blink: on a phone the torch IS the camera flash
+        // LED, so blinking it after every scan strobes the user, fights the
+        // manual Flash toggle, and is relentless at high scan rates (fountain).
+        // The live progress counter is the scan feedback.
       }
     }
   }
