@@ -185,6 +185,10 @@ class _TransferCardState extends State<TransferCard> {
                 ),
                 const SizedBox(width: 8),
                 _badge(_modeLabel(transfer.mode), Colors.blueGrey.shade200),
+                if (transfer.encoding == 'fountain') ...[
+                  const SizedBox(width: 8),
+                  _badge('Fountain', Colors.purple.shade200),
+                ],
                 const SizedBox(width: 8),
                 statusBadge,
                 const SizedBox(width: 8),
@@ -210,7 +214,8 @@ class _TransferCardState extends State<TransferCard> {
               Row(
                 children: [
                   Text(
-                    '${transfer.seenIndices.length} / ${transfer.total} chunks',
+                    '${transfer.seenIndices.length} / ${transfer.total} '
+                    '${transfer.encoding == 'fountain' ? 'blocks' : 'chunks'}',
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                   if (!transfer.isComplete) ...[
@@ -233,7 +238,11 @@ class _TransferCardState extends State<TransferCard> {
                 ChunkGrid(total: transfer.total, seenIndices: transfer.seenIndices),
                 const SizedBox(height: 4),
                 Text(
-                  'Missing: ${formatChunkRanges(transfer.missingIndices)}',
+                  transfer.encoding == 'fountain'
+                      ? '${transfer.missingIndices.length} block'
+                          '${transfer.missingIndices.length == 1 ? '' : 's'} '
+                          'not yet recovered — keep scanning, any frames will do'
+                      : 'Missing: ${formatChunkRanges(transfer.missingIndices)}',
                   style: Theme.of(context)
                       .textTheme
                       .labelSmall

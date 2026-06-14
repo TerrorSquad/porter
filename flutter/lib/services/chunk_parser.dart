@@ -15,6 +15,15 @@ class ChunkParser {
       }
     }
 
+    // Try fountain format: F|seq|K|fileSize|id|payload
+    if (raw.startsWith('F|')) {
+      try {
+        return FountainChunk.fromQRString(raw);
+      } catch (e) {
+        return null;
+      }
+    }
+
     // Try data format: index|total|mode|id|payload
     try {
       return DataChunk.fromQRString(raw);

@@ -5,6 +5,7 @@ Terminal-based QR code file transfer tool built with TypeScript and Node.js.
 ## 📦 Quick Start
 
 ### Using Pre-built Binary
+
 ```bash
 # Run directly
 ./dist/porter.mjs myfile.txt --slideshow
@@ -15,6 +16,7 @@ porter myfile.txt --slideshow
 ```
 
 ### Global Installation (macOS/Linux)
+
 ```bash
 # Copy standalone executable to pnpm global bin directory
 cp dist/porter.mjs ~/.local/share/pnpm/porter.mjs
@@ -44,10 +46,12 @@ porter --help
 ## 🛠️ Development
 
 ### Prerequisites
+
 - **Node.js 18+** (recommended: 24.13.0)
 - **pnpm** (or npm/yarn)
 
 ### Building from Source
+
 ```bash
 # Install dependencies
 pnpm install
@@ -104,16 +108,17 @@ pnpm run size:report
 
 Use these presets unless you specifically need to tune individual feature flags:
 
-| Command | Output | Use when |
-|---------|--------|----------|
-| `pnpm run build` | `dist/porter.mjs` | You want the default local build with the full interactive CLI. |
-| `pnpm run build:slim` | `dist/porter.slideshow-only.mjs` | You want the best size reduction without removing multipart, invert, or multi-QR support. |
-| `pnpm run build:minimal` | `dist/porter.minimal.mjs` | You want the absolute smallest externalized build and can live without optional features. |
-| `pnpm run build:standalone` | `dist/porter.standalone.mjs` | You need one self-contained file for another machine. |
-| `pnpm run build:standalone:slim` | `dist/porter.standalone.slideshow-only.mjs` | You need a smaller self-contained file and slideshow mode is enough. |
-| `pnpm run build:standalone:minimal` | `dist/porter.standalone.minimal.mjs` | You need the smallest self-contained file. |
+| Command                             | Output                                      | Use when                                                                                  |
+| ----------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `pnpm run build`                    | `dist/porter.mjs`                           | You want the default local build with the full interactive CLI.                           |
+| `pnpm run build:slim`               | `dist/porter.slideshow-only.mjs`            | You want the best size reduction without removing multipart, invert, or multi-QR support. |
+| `pnpm run build:minimal`            | `dist/porter.minimal.mjs`                   | You want the absolute smallest externalized build and can live without optional features. |
+| `pnpm run build:standalone`         | `dist/porter.standalone.mjs`                | You need one self-contained file for another machine.                                     |
+| `pnpm run build:standalone:slim`    | `dist/porter.standalone.slideshow-only.mjs` | You need a smaller self-contained file and slideshow mode is enough.                      |
+| `pnpm run build:standalone:minimal` | `dist/porter.standalone.minimal.mjs`        | You need the smallest self-contained file.                                                |
 
 ### Project Structure
+
 ```
 nodejs/
 ├── src/
@@ -134,6 +139,7 @@ nodejs/
 ## 🎯 Usage
 
 ### Basic Commands
+
 ```bash
 # Display help
 ./dist/porter.mjs --help
@@ -152,6 +158,7 @@ nodejs/
 ```
 
 ### Advanced Options
+
 ```bash
 # Custom speed (seconds per chunk)
 ./dist/porter.mjs file.txt --slideshow --speed=0.5
@@ -162,27 +169,89 @@ nodejs/
 
 # Binary files
 ./dist/porter.mjs image.png --slideshow
+
+# Fountain (LT code) mode — best for long/lossy scans
+./dist/porter.mjs bigfile.bin --slideshow --fountain
 ```
+
+## 🌊 Fountain coding mode (`--fountain`)
+
+By default porter splits a file into a fixed sequence of indexed chunks, and the
+receiver must eventually capture _every specific_ chunk. In long or lossy scans
+this causes a "last chunk" problem: the slideshow loops repeatedly while you wait
+for the few frames you happened to miss.
+
+`--fountain` switches to **fountain (Luby Transform) coding**. Instead of indexed
+chunks, porter emits a pool of XOR-combination _symbols_; the receiver can
+reconstruct the whole file from **any** sufficient subset of them, in any order.
+There is no specific frame you must catch — every frame you scan makes progress.
+
+```bash
+porter bigfile.bin --slideshow --fountain
+```
+
+**When to prefer it**
+
+| Situation                                | Recommended mode     |
+| ---------------------------------------- | -------------------- |
+| Small/medium file, good lighting, steady | sequential (default) |
+| Large file, or shaky/lossy/long scan     | `--fountain`         |
+
+Trade-offs: fountain mode adds redundancy (it renders ~3× as many frames as there
+are source blocks), and the sender's progress sidebar shows "symbol N of M"
+rather than a precise per-chunk grid. The receiver still verifies the final file
+against the same `CHECKSUM` (SHA-256) frame.
+
+Notes:
+
+- `--base64` has no effect under `--fountain` — symbol payloads are always
+  base64-encoded binary by construction.
+- Builds compiled without fountain support (see
+  `PORTER_FEATURE_FOUNTAIN=false`) reject `--fountain` at runtime.
+
+### Wire format
+
+Fountain frames use a distinct chunk type, recognised by the receiver before the
+sequential `index|total|mode|id|payload` format:
+
+```
+F|seq|K|fileSize|id|payload
+```
+
+- `F` — literal marker.
+- `seq` — symbol sequence number (`0, 1, 2, …`), used directly as the PRNG seed.
+- `K` — total number of source blocks for this transfer.
+- `fileSize` — original file size in bytes (the last source block is zero-padded;
+  the receiver trims to this on assembly).
+- `id` — the same 2-char transfer id used by sequential mode.
+- `payload` — base64 of the XOR'd block.
+
+The `(degree, source-block indices)` each symbol combines are **not transmitted** —
+both sides derive them deterministically from `seq` via a shared integer-only
+xorshift32 PRNG and degree table (`nodejs/src/lib/fountain.ts` ↔
+`flutter/lib/services/fountain_codec.dart`, pinned by matching golden-vector
+tests). The existing `CHECKSUM|T|<id>|<sha256>` frame is reused verbatim as the
+final frame in the pool.
 
 ## 🔧 Technology Stack
 
-| Component | Purpose |
-|-----------|---------|
-| **TypeScript** | Type-safe source code |
-| **Rollup** | Minified CLI bundling |
-| **qrcode-generator** | QR matrix generation |
-| **Node.js Crypto** | MD5 checksums |
-| **Zlib** | Gzip compression |
+| Component            | Purpose               |
+| -------------------- | --------------------- |
+| **TypeScript**       | Type-safe source code |
+| **Rollup**           | Minified CLI bundling |
+| **qrcode-generator** | QR matrix generation  |
+| **Node.js Crypto**   | MD5 checksums         |
+| **Zlib**             | Gzip compression      |
 
 ## 📊 Performance
 
-| Metric | Value |
-|--------|-------|
-| Bundle size | Single-file bundled CLI |
-| Dependencies | ~2 MB (node_modules) |
-| Startup time | <50ms |
-| Memory usage | ~30 MB |
-| Default speed | 2 chunks/sec |
+| Metric        | Value                   |
+| ------------- | ----------------------- |
+| Bundle size   | Single-file bundled CLI |
+| Dependencies  | ~2 MB (node_modules)    |
+| Startup time  | <50ms                   |
+| Memory usage  | ~30 MB                  |
+| Default speed | 2 chunks/sec            |
 
 ## 🧪 Testing
 
@@ -197,6 +266,7 @@ nodejs/
 ## 📦 Distribution
 
 ### Creating Portable Package
+
 ```bash
 # Small local build (expects node_modules to be present)
 pnpm run build
@@ -211,6 +281,7 @@ node porter.standalone.mjs --help
 ```
 
 ### Publishing to npm
+
 ```bash
 # Update version in package.json
 npm version patch
@@ -222,6 +293,7 @@ npm publish
 ## 🐛 Troubleshooting
 
 ### "Cannot find module"
+
 ```bash
 # Reinstall dependencies
 rm -rf node_modules pnpm-lock.yaml
@@ -229,11 +301,13 @@ pnpm install
 ```
 
 ### QR codes not displaying
+
 - Ensure terminal supports UTF-8
 - Try zooming out (terminal text size)
 - Check `LANG` environment variable: `export LANG=en_US.UTF-8`
 
 ### Build fails
+
 ```bash
 # Clear cache and rebuild
 rm -rf dist/
@@ -241,6 +315,7 @@ pnpm run build
 ```
 
 Build outputs:
+
 - `pnpm run build`: minified `dist/porter.mjs`, smaller but expects project dependencies to be installed.
 - `pnpm run build:slim`: alias for `build:slideshow-only`, recommended slim preset.
 - `pnpm run build:no-base64`: same as above, but compiled without `--base64` support.
@@ -260,6 +335,7 @@ Build outputs:
 - `pnpm run size:report`: prints raw and gzip-compressed sizes for current dist outputs.
 
 Modular feature builds:
+
 - Build-time feature flags now cover Base64, multipart input, invert, multi-QR, and interactive controls.
 - In `no-base64` builds, the `--base64` flag is removed from help and rejected at runtime.
 - The build-time flag is `PORTER_FEATURE_BASE64=false`, wired through Rollup so dead Base64 branches can be tree-shaken away.
@@ -268,6 +344,7 @@ Modular feature builds:
 - The build-time flag is `PORTER_FEATURE_MULTI_PART_INPUT=false`.
 - Invert support is modular via `PORTER_FEATURE_INVERT=false`.
 - Multi-QR support is modular via `PORTER_FEATURE_MULTI_QR=false`.
+- Fountain coding (`--fountain`) is modular via `PORTER_FEATURE_FOUNTAIN=false`; those builds drop the flag from help and reject it at runtime.
 - Interactive controls are modular via `PORTER_FEATURE_INTERACTIVE_CONTROLS=false`; those builds start directly in slideshow mode and omit keyboard-control UI.
 - `pnpm run build:minimal` and `pnpm run build:standalone:minimal` strip all optional features in one build.
 

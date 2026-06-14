@@ -67,7 +67,8 @@ Offline Computer              Phone / Receiver
 ✅ **Fast** — 2-10 chunks/sec depending on lighting  
 ✅ **Portable** — ~20 KB executable, runs on Node.js 18+  
 ✅ **Reliable** — Header protocol handles dropped/reordered chunks  
-✅ **Flexible** — Works with any camera, terminal, phone OS
+✅ **Flexible** — Works with any camera, terminal, phone OS  
+✅ **Fountain mode** — Optional `--fountain` (LT codes): rebuild a file from _any_ sufficient subset of frames, ideal for long/lossy scans
 
 ---
 
@@ -99,6 +100,11 @@ The Porter sender generates scannable QR codes. You can build a receiver app in 
 - **CLI:** Use any QR library to decode chunks and rebuild the file
 
 All you need is the chunk format: `index|total|mode|id|payload`
+
+Senders run with `--fountain` instead emit fountain (LT code) frames,
+`F|seq|K|fileSize|id|payload`, which a receiver reconstructs from any sufficient
+subset. See [nodejs/README.md](nodejs/README.md#-fountain-coding-mode---fountain)
+for the wire format and the cross-language PRNG/decoder design.
 
 ---
 

@@ -95,7 +95,7 @@ export class Chunker {
   }
 }
 
-function makeChunkId(high: number, low: number): string {
+export function makeChunkId(high: number, low: number): string {
   const value = ((high & 0xff) << 8) | (low & 0xff);
   return `${CHUNK_ID_ALPHABET[(value >> 6) & 0x3f]}${CHUNK_ID_ALPHABET[value & 0x3f]}`;
 }

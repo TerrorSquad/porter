@@ -121,6 +121,46 @@ void main() {
       expect(find.text('Missing: 2, 4'), findsOneWidget);
     });
 
+    testWidgets('shows a Fountain badge only for fountain-encoded transfers', (tester) async {
+      final sequential = Transfer(id: 'AB')
+        ..total = 2
+        ..seenIndices.add(1);
+      await pumpCard(tester, sequential);
+      expect(find.text('Fountain'), findsNothing);
+
+      final fountain = Transfer(id: 'CD')
+        ..encoding = 'fountain'
+        ..mode = 'B'
+        ..total = 4
+        ..seenIndices.addAll({1, 2});
+      await pumpCard(tester, fountain);
+      expect(find.text('Fountain'), findsOneWidget);
+    });
+
+    testWidgets('fountain transfers count blocks and relabel the missing text', (tester) async {
+      final transfer = Transfer(id: 'AB')
+        ..encoding = 'fountain'
+        ..mode = 'B'
+        ..total = 4
+        ..fountainFileSize = 50
+        ..seenIndices.addAll({1, 3});
+
+      await pumpCard(tester, transfer);
+
+      expect(find.text('2 / 4 blocks'), findsOneWidget);
+
+      await tester.tap(find.text('Show missing ▼'));
+      await tester.pump();
+
+      expect(find.byType(ChunkGrid), findsOneWidget);
+      expect(
+        find.text('2 blocks not yet recovered — keep scanning, any frames will do'),
+        findsOneWidget,
+      );
+      // The sequential "Missing: <ranges>" phrasing must not appear.
+      expect(find.textContaining('Missing:'), findsNothing);
+    });
+
     testWidgets('relay row is hidden when no relay URL is configured', (tester) async {
       final transfer = Transfer(id: 'AB')
         ..total = 1

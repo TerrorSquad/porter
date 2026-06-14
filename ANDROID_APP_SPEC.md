@@ -9,6 +9,7 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 ## 🎯 Core Features
 
 ### 1. **Camera & QR Detection**
+
 - **Real-time camera feed** from rear-facing camera
 - **Continuous QR scanning** (not one-shot) using `jsQR` equivalent
 - **Auto-detection** — no button press required, scans as QR codes appear
@@ -16,18 +17,28 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 - **Debouncing** — ignore duplicate scans within 300ms
 
 ### 2. **Data Parsing & Assembly**
+
 - **Parse header format**: `index|total|mode|id|payload`
   - `index`: Chunk number (0-based)
   - `total`: Total chunks
   - `mode`: `T` (Text), `B` (Binary/Base64), `C` (Compressed)
-   - `id`: Two-character transfer identifier for grouping repeated scans without using the full filename
-   - `payload`: Actual data (may contain `|` characters)
+  - `id`: Two-character transfer identifier for grouping repeated scans without using the full filename
+  - `payload`: Actual data (may contain `|` characters)
+
+- **Parse fountain format** (optional, senders run with `--fountain`): `F|seq|K|fileSize|id|payload`
+  - `seq`: Symbol sequence number, used directly as a shared-PRNG seed
+  - `K`: Number of source blocks; `fileSize`: original byte length (for trimming padding)
+  - `payload`: base64 of an XOR'd block. The receiver derives which source blocks
+    each symbol combines from `seq` (never transmitted) and recovers the file from
+    any sufficient subset of symbols via a peeling + GF(2) decoder. See
+    [nodejs/README.md](nodejs/README.md#-fountain-coding-mode---fountain).
 
 - **Chunk storage** — Store received chunks in a map by index
 - **Progress tracking** — Display `current / total` chunks
 - **Validation** — Detect mismatches in total chunk count
 
 ### 3. **Data Assembly & Decompression**
+
 - **Concatenate chunks** in index order
 - **Text mode (T)** — Concatenate UTF-8 strings directly
 - **Binary mode (B)** — Concatenate base64 strings, then decode to bytes
@@ -35,6 +46,7 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 - **Error handling** — Gracefully handle malformed data or decompression failures
 
 ### 4. **File Export**
+
 - **Save to Downloads folder** (Android 11+ compatible)
 - **Auto-generate filename** — `porter-{timestamp}.{ext}` (detect extension from data)
 - **Fallback options**:
@@ -45,6 +57,7 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 ### 5. **UI/UX Requirements**
 
 #### Scanning Screen
+
 - Full-screen camera preview
 - Scanning frame overlay (250x250px green border)
 - **Progress bar** with percentage (0-100%)
@@ -54,6 +67,7 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 - Landscape + portrait support
 
 #### Result Screen (After 100% completion)
+
 - **Data preview** — Scrollable text area showing received content (monospace font)
 - **Save File button** — Primary action (green)
 - **Scan Again button** — Secondary action (reset, red)
@@ -61,11 +75,13 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 - Status message ("✓ Saved to Downloads", etc.)
 
 #### Permissions Screen
+
 - Request camera permission on first launch
 - Request file storage permission before saving
 - Clear explanatory text
 
 ### 6. **Performance Characteristics**
+
 - **Target speed**: Handle 2-3 chunks/sec (0.5s per chunk)
 - **Frame rate**: 30 FPS camera preview
 - **Memory**: Track max 100 chunks without lag
@@ -76,6 +92,7 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 ## 🛠️ Technical Stack (Flutter)
 
 ### Core Packages
+
 - **`camera`** — Real-time camera access
 - **`mobile_scanner`** or **`qr_scanner_plus`** — QR detection
 - **`archive`** — Gzip decompression
@@ -84,9 +101,11 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 - **`flutter_test`** + **`integration_test`** — Testing
 
 ### State Management
+
 - **`provider`** or **`riverpod`** — Manage scanner state, chunks, progress
 
 ### UI Framework
+
 - **Material 3** (dark theme by default)
 - **Custom widgets** for frame overlay, progress bar
 
@@ -140,8 +159,9 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 ## 📊 Data Handling Examples
 
 ### Text Mode (T)
+
 ```
-QR1: 0|3|T|Hello 
+QR1: 0|3|T|Hello
 QR2: 1|3|T| World
 QR3: 2|3|T|!
 
@@ -149,6 +169,7 @@ Result: "Hello World!"
 ```
 
 ### Binary Mode (B)
+
 ```
 QR1: 0|2|B|aGVsbG8gd29ybGQ=  (base64 for "hello world")
 QR2: 1|2|B|
@@ -157,6 +178,7 @@ Result: Binary data (file saved as .bin or detected type)
 ```
 
 ### Compressed Mode (C)
+
 ```
 QR1: 0|1|C|H4sIAA...  (gzip compressed base64)
 QR2: (none if large file split)
@@ -184,6 +206,7 @@ Result: Decompressed → saved file
 ## 🎨 UI Mockup Hints
 
 ### Scanning Screen
+
 ```
 ┌─────────────────────────────┐
 │     [Camera Feed]           │
@@ -200,6 +223,7 @@ Result: Decompressed → saved file
 ```
 
 ### Result Screen
+
 ```
 ┌─────────────────────────────┐
 │      📦 Received Data       │
@@ -224,7 +248,7 @@ Result: Decompressed → saved file
 ✅ Handle all 3 modes (T, B, C) seamlessly  
 ✅ Survive orientation change and brief permission delays  
 ✅ Clear error messages for user (corrupt data, save failed, etc.)  
-✅ Works on Android 12+  
+✅ Works on Android 12+
 
 ---
 
@@ -232,3 +256,4 @@ Result: Decompressed → saved file
 
 - **Sender CLI** (`/php/utils`): `pnpm porter <file> --slideshow`
 - **QR Format**: Defined in `src/lib/chunker.ts` (header protocol: `index|total|mode|id|payload`)
+- **Fountain Format**: Defined in `src/lib/fountain.ts` (LT-code protocol: `F|seq|K|fileSize|id|payload`)

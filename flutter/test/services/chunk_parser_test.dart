@@ -22,6 +22,23 @@ void main() {
       expect(chunk.payload, 'Hello|World|!');
     });
 
+    test('parses fountain chunk', () {
+      final result = ChunkParser.parseQR('F|7|8|122|Or|aXMgaXMgYSB0ZXN0IG9mIA==');
+      expect(result, isA<FountainChunk>());
+      final chunk = result as FountainChunk;
+      expect(chunk.seq, 7);
+      expect(chunk.k, 8);
+      expect(chunk.fileSize, 122);
+      expect(chunk.id, 'Or');
+      expect(chunk.payload, 'aXMgaXMgYSB0ZXN0IG9mIA==');
+    });
+
+    test('does not mistake a data chunk for a fountain chunk', () {
+      // Sequential chunks never start with "F|"; index field is numeric.
+      final result = ChunkParser.parseQR('0|2|T|AB|Hello');
+      expect(result, isA<DataChunk>());
+    });
+
     test('parses checksum chunk', () {
       final result = ChunkParser.parseQR('CHECKSUM|T|AB|abc123def456');
       expect(result, isA<ChecksumChunk>());
