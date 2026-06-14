@@ -29,6 +29,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
   CameraFpsPreset _activeFps = CameraFpsPreset.auto;
   bool _ready = false;
   bool _restarting = false;
+  late final ScannerProvider _scannerProvider;
   Timer? _rateTimer;
   DateTime? _lastFlashAt;
   Offset? _focusPoint;
@@ -55,7 +56,8 @@ class _ScanningScreenState extends State<ScanningScreen> {
       if (mounted) setState(() {});
     });
 
-    context.read<ScannerProvider>().onTransferComplete = _handleTransferComplete;
+    _scannerProvider = context.read<ScannerProvider>();
+    _scannerProvider.onTransferComplete = _handleTransferComplete;
   }
 
   Future<void> _initCamera() async {
@@ -156,7 +158,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
   void dispose() {
     _rateTimer?.cancel();
     _focusIndicatorTimer?.cancel();
-    context.read<ScannerProvider>().onTransferComplete = null;
+    _scannerProvider.onTransferComplete = null;
     controller.dispose();
     super.dispose();
   }
