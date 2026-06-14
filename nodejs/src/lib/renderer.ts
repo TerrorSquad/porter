@@ -6,6 +6,16 @@ const QR_WHITE_BLACK = '▀';
 const QR_BLACK_WHITE = '▄';
 const QR_BLACK_ALL = ' ';
 
+// Synchronized output (DEC private mode 2026): tells the terminal to buffer
+// everything between BSU and ESU and composite it in a single repaint. A frame
+// can be several KB, so when the PTY buffer fills (after a handful of frames)
+// the OS splits our single write() across flushes — without synchronization the
+// terminal paints the cleared (blank) lines before the QR bytes arrive, which a
+// camera/eye sees as a black flash. Terminals that don't support 2026 ignore
+// these private-mode sequences harmlessly.
+const SYNC_BEGIN = '\x1b[?2026h';
+const SYNC_END = '\x1b[?2026l';
+
 function repeatCell(cell: string, count: number): string {
   return count > 0 ? cell.repeat(count) : '';
 }
@@ -160,6 +170,15 @@ export class Renderer {
     return 1;
   }
 
+  /**
+   * Writes a fully-built frame in one go, wrapped in synchronized-output
+   * markers so the terminal repaints it atomically even if the OS splits the
+   * underlying write across flushes (the cause of the periodic black flash).
+   */
+  private flush(out: string[]) {
+    process.stdout.write(SYNC_BEGIN + out.join('') + SYNC_END);
+  }
+
   public draw() {
     // Build the whole frame in memory and flush it with a single write.
     // Writing line-by-line lets the terminal repaint mid-frame, which a
@@ -172,17 +191,12 @@ export class Renderer {
 
     if (!this.chunks.length || !this.chunks[this.index]) {
       out.push('\x1b[2KNo content to display.\n');
-      process.stdout.write(out.join(''));
+      this.flush(out);
       return;
     }
 
-    // Clear previous frame area (first lastHeight lines) to prevent glitches
-    // Only do this if we have previous height data
-    if (this.lastHeight > 0) {
-      for (let i = 0; i < this.lastHeight; i++) {
-        out.push(`\x1b[${i + 1};1H\x1b[2K`);
-      }
-    }
+    // renderMultiQr clears the full frame area (max of current/previous/terminal
+    // height) before drawing, so no separate pre-clear pass is needed here.
 
     // Determine how many QR codes to render (multiQr mode), capped to however
     // many fit in a grid at the current terminal size.
@@ -211,13 +225,13 @@ export class Renderer {
         out.push('\x1b[2J\x1b[H');
         out.push('\x1b[1;31mError generating QR code:\x1b[0m\n');
         out.push(`${e}\n`);
-        process.stdout.write(out.join(''));
+        this.flush(out);
         return;
       }
     }
 
     out.push(this.renderMultiQr(qrDataList, maxQrHeight));
-    process.stdout.write(out.join(''));
+    this.flush(out);
   }
 
   private renderMultiQr(qrDataList: QrData[], maxQrHeight: number): string {
