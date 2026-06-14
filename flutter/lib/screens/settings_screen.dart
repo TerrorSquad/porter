@@ -48,7 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _pickOutputDirectory() async {
-    final path = await FilePicker.platform.getDirectoryPath();
+    final path = await FilePicker.getDirectoryPath();
     if (path == null || !mounted) return;
 
     final settings = context.read<SettingsProvider>();
