@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
+import { FountainDecoder } from './fountain-decoder.js';
 
 // ── Naming helpers ────────────────────────────────────────────────────────────
 
@@ -398,6 +399,210 @@ async function storeQRChunk(outputDir: string, chunk: QRChunkUpload): Promise<Up
   });
 }
 
+// ── Fountain (LT code) decoding ───────────────────────────────────────────────
+
+interface FountainChunkUpload {
+  seq: number;
+  k: number;
+  fileSize: number;
+  id: string;
+  payload: Buffer;
+}
+
+interface FountainState {
+  decoder: FountainDecoder;
+  k: number;
+  fileSize: number;
+  checksum?: string;
+  joinedPath?: string;
+  joinedSha?: string; // sha256 of the written file, cached at join time
+  verified?: boolean;
+}
+
+// In-memory decoders keyed by sanitized transfer id. Fountain decode is
+// all-or-nothing (no useful partial output until ~K symbols arrive), so symbols
+// are held in memory for the life of the process rather than persisted per
+// symbol; the recovered file, checksum sidecar and manifest are written to disk
+// on completion. A server restart mid-transfer therefore loses fountain
+// progress (sequential transfers still resume from their part files).
+const fountainTransfers = new Map<string, FountainState>();
+
+function parseFountainChunk(raw: Buffer): FountainChunkUpload | null {
+  const s = raw.toString('utf8');
+  if (!s.startsWith('F|')) return null;
+
+  // F|seq|K|fileSize|id|payload  (payload may contain '|')
+  const p1 = s.indexOf('|');
+  const p2 = s.indexOf('|', p1 + 1);
+  if (p2 < 0) return null;
+  const p3 = s.indexOf('|', p2 + 1);
+  if (p3 < 0) return null;
+  const p4 = s.indexOf('|', p3 + 1);
+  if (p4 < 0) return null;
+  const p5 = s.indexOf('|', p4 + 1);
+  if (p5 < 0) return null;
+
+  const seq = parseInt(s.slice(p1 + 1, p2), 10);
+  const k = parseInt(s.slice(p2 + 1, p3), 10);
+  const fileSize = parseInt(s.slice(p3 + 1, p4), 10);
+  const id = s.slice(p4 + 1, p5);
+  if (!Number.isInteger(seq) || seq < 0) return null;
+  if (!Number.isInteger(k) || k < 1) return null;
+  if (!Number.isInteger(fileSize) || fileSize < 0) return null;
+  if (!validateChunkID(id)) return null;
+
+  const payload = Buffer.from(s.slice(p5 + 1), 'base64');
+  return { seq, k, fileSize, id, payload };
+}
+
+function writeFountainManifest(outputDir: string, id: string, state: FountainState): void {
+  const base = chunkFileBase(id);
+  const manifest: TransferManifest = {
+    id: base,
+    directory: base,
+    encoding: 'fountain',
+    totalParts: state.k,
+    receivedParts: state.decoder.recoveredCount,
+    symbolsReceived: state.decoder.symbolCount,
+    missingParts: [],
+    partFiles: [],
+    fileSize: state.fileSize,
+    checksum: state.checksum,
+    joinedFile: state.joinedPath ? path.basename(state.joinedPath) : undefined,
+    joinedSHA256: state.joinedSha,
+    checksumVerified: state.verified === true,
+    complete: state.decoder.isComplete,
+    updatedAt: new Date().toISOString(),
+  };
+  writeManifest(outputDir, id, manifest);
+}
+
+// Once decoding completes, write the recovered file (trimmed to the original
+// size — the last source block is zero-padded) and verify it against the
+// transmitted checksum when that has arrived.
+function maybeCompleteFountain(outputDir: string, id: string, state: FountainState): void {
+  if (!state.decoder.isComplete) return;
+
+  // Assemble + hash once, when first complete, then cache — later looped
+  // symbols and the checksum frame reuse the cached digest.
+  if (!state.joinedPath) {
+    const assembled = state.decoder.assemble().subarray(0, state.fileSize);
+    state.joinedSha = sha256hex(assembled);
+    const transferDir = transferDirectory(outputDir, id);
+    fs.mkdirSync(transferDir, { recursive: true });
+    const joinedPath = transferJoinPath(outputDir, id);
+    fs.writeFileSync(joinedPath, assembled);
+    state.joinedPath = joinedPath;
+    console.log(
+      `Fountain decoded ${chunkFileBase(id)} → ${joinedPath} ` +
+        `(${assembled.length} bytes, sha256=${state.joinedSha})`,
+    );
+  }
+
+  // Verify against the transmitted checksum once it's known.
+  if (state.checksum && state.verified === undefined) {
+    state.verified = state.checksum.toLowerCase() === state.joinedSha!.toLowerCase();
+    if (!state.verified) {
+      console.error(
+        `Fountain checksum mismatch for ${chunkFileBase(id)}: ` +
+          `expected ${state.checksum}, got ${state.joinedSha}`,
+      );
+    }
+  }
+}
+
+function getOrCreateFountainState(
+  outputDir: string,
+  id: string,
+  k: number,
+  fileSize: number,
+  blockSize: number,
+): FountainState {
+  const base = chunkFileBase(id);
+  let state = fountainTransfers.get(base);
+  if (!state) {
+    state = { decoder: new FountainDecoder(k, blockSize), k, fileSize };
+    const shaFile = path.join(transferDirectory(outputDir, id), chunkChecksumFileName(id));
+    if (fs.existsSync(shaFile)) state.checksum = fs.readFileSync(shaFile, 'utf8').trim();
+    fountainTransfers.set(base, state);
+  }
+  return state;
+}
+
+function fountainResult(
+  outputDir: string,
+  id: string,
+  state: FountainState,
+  duplicate: boolean,
+): UploadResult {
+  const base = chunkFileBase(id);
+  return {
+    fileName: state.joinedPath ? path.basename(state.joinedPath) : `${base}.joined`,
+    path: state.joinedPath ?? transferJoinPath(outputDir, id),
+    size: state.fileSize,
+    duplicate: duplicate || undefined,
+    transferId: base,
+    manifestPath: transferManifestPath(outputDir, id),
+    complete: state.decoder.isComplete,
+    verified: state.verified,
+    joinedPath: state.joinedPath || undefined,
+  };
+}
+
+async function storeFountainSymbol(
+  outputDir: string,
+  chunk: FountainChunkUpload,
+): Promise<UploadResult> {
+  return withTransferLock(chunk.id, async () => {
+    fs.mkdirSync(transferDirectory(outputDir, chunk.id), { recursive: true });
+    const state = getOrCreateFountainState(
+      outputDir,
+      chunk.id,
+      chunk.k,
+      chunk.fileSize,
+      chunk.payload.length,
+    );
+
+    const duplicate = state.decoder.hasSeq(chunk.seq);
+    if (!duplicate) {
+      state.decoder.addSymbol(chunk.seq, chunk.payload);
+      maybeCompleteFountain(outputDir, chunk.id, state);
+    }
+    writeFountainManifest(outputDir, chunk.id, state);
+    return fountainResult(outputDir, chunk.id, state, duplicate);
+  });
+}
+
+async function storeFountainChecksum(
+  outputDir: string,
+  chunk: QRChunkUpload,
+): Promise<UploadResult> {
+  return withTransferLock(chunk.id, async () => {
+    const transferDir = transferDirectory(outputDir, chunk.id);
+    fs.mkdirSync(transferDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(transferDir, chunkChecksumFileName(chunk.id)),
+      (chunk.checksum ?? '') + '\n',
+    );
+
+    const state = fountainTransfers.get(chunkFileBase(chunk.id));
+    if (!state) {
+      // Symbols normally precede the checksum; if not, persist the sidecar and
+      // it'll be picked up when the decoder is created.
+      return {
+        fileName: chunkChecksumFileName(chunk.id),
+        path: path.join(transferDir, chunkChecksumFileName(chunk.id)),
+        size: 0,
+        transferId: chunkFileBase(chunk.id),
+      };
+    }
+    state.checksum = chunk.checksum;
+    maybeCompleteFountain(outputDir, chunk.id, state);
+    writeFountainManifest(outputDir, chunk.id, state);
+    return fountainResult(outputDir, chunk.id, state, false);
+  });
+}
+
 // ── Raw / multipart upload storage ───────────────────────────────────────────
 
 function findDuplicateByHash(
@@ -471,8 +676,16 @@ async function storeRawUpload(req: http.IncomingMessage, outputDir: string): Pro
   const qrScan = tryParseQRScanUpload(body);
   if (qrScan) {
     const raw = qrScanBytes(qrScan);
+    const fountainChunk = parseFountainChunk(raw);
+    if (fountainChunk) return storeFountainSymbol(outputDir, fountainChunk);
+
     const chunk = parseQRChunk(raw);
     if (!chunk) throw new Error('Invalid QR chunk format');
+    // A CHECKSUM frame for a fountain transfer (detected by its symbols having
+    // arrived) verifies the decoded file rather than a sequential part set.
+    if (chunk.isChecksum && fountainTransfers.has(chunkFileBase(chunk.id))) {
+      return storeFountainChecksum(outputDir, chunk);
+    }
     return storeQRChunk(outputDir, chunk);
   }
 
@@ -583,7 +796,7 @@ function setCORSHeaders(res: http.ServerResponse): void {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 }
 
-export function runReceiver(flags: Record<string, string>): void {
+export function runReceiver(flags: Record<string, string>): http.Server {
   const host = flags['host']?.trim() || '0.0.0.0';
   const port = parseInt(flags['port']?.trim() || '8080', 10);
   const outputDir = path.resolve(flags['output-dir']?.trim() || 'received');
@@ -610,6 +823,7 @@ export function runReceiver(flags: Record<string, string>): void {
           `Duplicate uploads are skipped automatically based on file content.\n` +
           `QR scan JSON uploads are unpacked into transfer directories like <id>/<id>.partaa and <id>/<id>.meta.json.\n` +
           `When a transfer is complete, Porter auto-joins it and writes <id>/<id>.joined.\n` +
+          `Fountain (LT code) frames "F|..." are decoded on the fly; the recovered file is written to <id>/<id>.joined.\n` +
           `Saving uploads to: ${outputDir}\n`,
       );
       return;
@@ -657,4 +871,6 @@ export function runReceiver(flags: Record<string, string>): void {
     });
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+
+  return server;
 }

@@ -232,16 +232,38 @@ export class FountainChunker {
     const checksumChunk = `CHECKSUM|T|${this.chunkId}|${this.checksum}`;
     const target = new Array<string>(total);
 
+    const isIndex = (prop: string | symbol): prop is string =>
+      typeof prop === 'string' && /^\d+$/.test(prop) && Number(prop) < total;
+
     this.chunks = new Proxy(target, {
       get: (t, prop, receiver) => {
         if (prop === 'length') return total;
-        if (typeof prop === 'string' && /^\d+$/.test(prop)) {
+        if (isIndex(prop)) {
           const i = Number(prop);
-          if (i < total) {
-            return i === this.symbolCount ? checksumChunk : this.buildSymbol(i);
-          }
+          return i === this.symbolCount ? checksumChunk : this.buildSymbol(i);
         }
         return Reflect.get(t, prop, receiver);
+      },
+      // The backing array is sparse (all holes), so without a `has` trap the
+      // array methods that skip holes — filter/map/forEach/reduce — would treat
+      // every index as absent and silently produce nothing. Report indices
+      // 0..total-1 as present so `chunks` behaves like a dense array.
+      has: (t, prop) => {
+        if (prop === 'length') return true;
+        if (isIndex(prop)) return true;
+        return Reflect.has(t, prop);
+      },
+      getOwnPropertyDescriptor: (t, prop) => {
+        if (isIndex(prop)) {
+          const i = Number(prop);
+          return {
+            value: i === this.symbolCount ? checksumChunk : this.buildSymbol(i),
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          };
+        }
+        return Reflect.getOwnPropertyDescriptor(t, prop);
       },
     });
   }
