@@ -121,6 +121,25 @@ void main() {
       }
     });
 
+    test('completes via Gaussian-elimination fallback when peeling stalls (k=11)', () {
+      // k=11 at N=3K is a known case where pure peeling stalls on a stuck core
+      // even with the full, in-order pool; the GE fallback must finish it.
+      final content = List<int>.generate(164, (i) => (i * 37 + 11) & 0xff);
+      const blockSize = 16;
+      final k = (content.length / blockSize).ceil();
+      expect(k, 11);
+      final n = (k * 3).clamp(k + 20, 1 << 30);
+      final symbols = _encode(content, blockSize, n);
+
+      final decoder = FountainDecoder(k: k, blockSize: blockSize);
+      for (final s in symbols) {
+        decoder.addSymbol(s.key, s.value);
+      }
+
+      expect(decoder.isComplete, true);
+      expect(decoder.assemble().sublist(0, content.length), content);
+    });
+
     test('k=1 recovers from a single degree-1 symbol', () {
       final content = utf8.encode('tiny');
       const blockSize = 16;

@@ -2,6 +2,17 @@ class Transfer {
   final String id;
   int total = 0;
   String mode = 'T';
+
+  /// Transfer coding scheme: 'sequential' (indexed chunks) or 'fountain' (LT
+  /// codes). For fountain transfers [total] is the source-block count K,
+  /// [seenIndices]/[chunks] hold *recovered* source blocks (fed in by the
+  /// FountainDecoder), and [fountainFileSize] is the original byte length.
+  String encoding = 'sequential';
+
+  /// Original file size in bytes for fountain transfers; null otherwise. The
+  /// last source block is zero-padded, so assembled data is trimmed to this.
+  int? fountainFileSize;
+
   Map<int, List<int>> chunks = {}; // index -> bytes
   Set<int> seenIndices = {};
   String? checksum;
@@ -46,6 +57,8 @@ class Transfer {
   void reset() {
     total = 0;
     mode = 'T';
+    encoding = 'sequential';
+    fountainFileSize = null;
     chunks.clear();
     seenIndices.clear();
     checksum = null;
