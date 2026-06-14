@@ -209,13 +209,12 @@ class _TransferCardState extends State<TransferCard> {
             ),
             const SizedBox(height: 8),
             if (transfer.total > 0) ...[
-              LinearProgressIndicator(value: transfer.progress / 100),
+              LinearProgressIndicator(value: transfer.displayProgress),
               const SizedBox(height: 4),
               Row(
                 children: [
                   Text(
-                    '${transfer.seenIndices.length} / ${transfer.total} '
-                    '${transfer.encoding == 'fountain' ? 'blocks' : 'chunks'}',
+                    transfer.progressLabel,
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                   if (!transfer.isComplete) ...[

@@ -193,6 +193,29 @@ void main() {
       expect(assembler.ingest(chunks[0]), false);
     });
 
+    test('fountain progress tracks distinct symbols and fires per new symbol', () {
+      final content = utf8.encode('symbol progress counting ' * 8);
+      const blockSize = 16;
+      final k = (content.length / blockSize).ceil();
+      final n = (k * 3).clamp(k + 20, 1 << 30);
+      final chunks = _encodeFountain(content, blockSize, n, 'SP');
+
+      var progressCalls = 0;
+      final assembler = Assembler(onProgress: (_) => progressCalls++);
+
+      // Feed the first few symbols; recovery may still be ~0, but symbol count
+      // and progress callbacks must advance regardless.
+      for (var i = 0; i < 5; i++) {
+        assembler.ingest(chunks[i]);
+      }
+
+      final t = assembler.transfers['SP']!;
+      expect(t.fountainSymbols, 5);
+      expect(progressCalls, 5);
+      // displayProgress reflects symbols/K, not the (still tiny) recovered count.
+      expect(t.displayProgress, closeTo(5 / k, 1e-9));
+    });
+
     test('decodes the nodejs cross-language fixture through ingest', () {
       final raw = File('test/fixtures/fountain_sample.json').readAsStringSync();
       final fixture = jsonDecode(raw) as Map<String, dynamic>;

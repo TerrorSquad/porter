@@ -63,16 +63,17 @@ class Assembler {
       if (decoder.hasSeq(parsed.seq)) return false;
 
       final recovered = decoder.addSymbol(parsed.seq, symbol);
+      transfer.fountainSymbols = decoder.symbolCount;
       for (final block in recovered) {
         transfer.addChunk(block.index, block.bytes);
         onChunkBytes?.call(block.bytes.length);
         onChunkReceived?.call(transfer, block.index, block.bytes);
       }
 
-      if (recovered.isNotEmpty) {
-        onProgress?.call(transfer);
-        _tryComplete(transfer);
-      }
+      // Fire progress on every new symbol (not just on recovery): symbol count
+      // is the meaningful progress signal, since blocks arrive in a late burst.
+      onProgress?.call(transfer);
+      if (recovered.isNotEmpty) _tryComplete(transfer);
       return true;
     }
 
