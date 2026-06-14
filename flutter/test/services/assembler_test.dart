@@ -155,7 +155,10 @@ void main() {
     });
 
     test('fountain transfer recovers from a shuffled, lossy symbol stream', () {
-      final content = utf8.encode('order-independent fountain recovery ' * 5);
+      // Use a non-trivial K (~45): at very small K a deterministic 25% drop can
+      // leave a source block uncovered by any surviving symbol (unsolvable by
+      // anyone), which is a property of the loss pattern, not the decoder.
+      final content = utf8.encode('order-independent fountain recovery ' * 20);
       const blockSize = 16;
       final k = (content.length / blockSize).ceil();
       final n = (k * 3).clamp(k + 20, 1 << 30);

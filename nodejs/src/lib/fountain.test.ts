@@ -27,32 +27,31 @@ test('buildDegreeTable for k=1 and k=2 forces degree 1', () => {
 
 test('buildDegreeTable for k=10 matches the golden table', () => {
   assert.deepStrictEqual(buildDegreeTable(10), {
-    cumWeights: [0, 4, 10, 14, 15, 16, 17, 18, 19, 20, 21],
-    total: 21,
+    cumWeights: [0, 4, 10, 14, 14, 14, 14, 14, 14, 14, 14],
+    total: 14,
   });
 });
 
-test('buildDegreeTable for k=100 matches the golden table', () => {
+test('buildDegreeTable caps the max degree near sqrt(k) (no high-degree tail)', () => {
+  // Regression: weights for degrees above ~sqrt(k) must be 0, not floored to 1.
   const table = buildDegreeTable(100);
-  assert.strictEqual(table.total, 214);
+  assert.strictEqual(table.total, 124);
   assert.strictEqual(table.cumWeights[1], 11);
   assert.strictEqual(table.cumWeights[2], 66);
   assert.strictEqual(table.cumWeights[3], 85);
+  // Degree 10 already reaches the total — degrees 11..100 carry zero weight.
   assert.strictEqual(table.cumWeights[10], 124);
-  assert.strictEqual(table.cumWeights[100], 214);
+  assert.strictEqual(table.cumWeights[100], 124);
 });
 
 // --- Golden vectors: sampleIndices ---
 
 test('sampleIndices for k=10 matches the golden (degree, indices) pairs', () => {
   assert.deepStrictEqual(sampleIndices(0, 10), { degree: 3, indices: [2, 3, 5] });
-  assert.deepStrictEqual(sampleIndices(1, 10), { degree: 1, indices: [8] });
-  assert.deepStrictEqual(sampleIndices(2, 10), { degree: 2, indices: [1, 7] });
-  assert.deepStrictEqual(sampleIndices(3, 10), {
-    degree: 9,
-    indices: [1, 2, 3, 4, 5, 6, 7, 9, 10],
-  });
-  assert.deepStrictEqual(sampleIndices(4, 10), { degree: 2, indices: [1, 3] });
+  assert.deepStrictEqual(sampleIndices(1, 10), { degree: 2, indices: [2, 8] });
+  assert.deepStrictEqual(sampleIndices(2, 10), { degree: 1, indices: [1] });
+  assert.deepStrictEqual(sampleIndices(3, 10), { degree: 3, indices: [4, 9, 10] });
+  assert.deepStrictEqual(sampleIndices(4, 10), { degree: 1, indices: [3] });
 });
 
 test('sampleIndices for k=1 always returns degree 1, index [1]', () => {
@@ -78,7 +77,7 @@ test('FountainChunker produces the expected shape for a small input', () => {
     fc.getSha256(),
     'e9f9a2e49367eda5c4c444fc2a3cdf0312fd73eeadfd6994f61951130d093687',
   );
-  assert.strictEqual(fc.chunks[0], 'F|0|4|57|dv|aXMgaXMgYSB0ZXN0IG9mIA==');
+  assert.strictEqual(fc.chunks[0], 'F|0|4|57|dv|ChxEAB1HQVcbFx8QAU8ySA==');
   assert.strictEqual(fc.chunks[fc.chunks.length - 1], `CHECKSUM|T|dv|${fc.getSha256()}`);
 });
 

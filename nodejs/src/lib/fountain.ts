@@ -59,7 +59,13 @@ export function buildDegreeTable(k: number): DegreeTable {
   const weights = new Array<number>(k + 1).fill(0);
   weights[1] = 1;
   for (let i = 2; i <= k; i++) {
-    weights[i] = Math.max(1, Math.floor(k / (i * (i - 1))));
+    // No max(1, ...) here: the ideal-soliton weight floors to 0 once
+    // i*(i-1) > k (around i > sqrt(k)). Flooring those to 1 instead would
+    // give every high degree weight 1 — a huge uniform tail of enormous
+    // degrees that, for a large file (K in the hundreds of thousands), makes
+    // most symbols XOR tens of thousands of blocks (catastrophically slow and
+    // undecodable). Letting them stay 0 caps the max degree near sqrt(K).
+    weights[i] = Math.floor(k / (i * (i - 1)));
   }
 
   const s = Math.max(2, Math.floor(Math.sqrt(k)));
@@ -79,10 +85,20 @@ export function buildDegreeTable(k: number): DegreeTable {
 }
 
 function pickDegree(r: number, cumWeights: number[]): number {
-  for (let d = 1; d < cumWeights.length; d++) {
-    if (r < cumWeights[d]) return d;
+  // Smallest degree d (>= 1) with cumWeights[d] > r. cumWeights is strictly
+  // increasing, so binary search — a linear scan here is O(K) per symbol, which
+  // dominates encode/decode time for large files (K in the hundreds of thousands).
+  let lo = 1;
+  let hi = cumWeights.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (cumWeights[mid] > r) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
   }
-  return cumWeights.length - 1;
+  return lo;
 }
 
 /**
@@ -111,9 +127,16 @@ export function sampleIndices(
 }
 
 /**
- * "Precomputed pool" fountain (LT code) encoder. Mirrors Chunker's public
+ * Lazy "infinite pool" fountain (LT code) encoder. Mirrors Chunker's public
  * surface (chunks, version, chunkId, checksum, getSha256/getMd5,
  * calculateLayout) so Renderer/porter.ts need no changes to render its output.
+ *
+ * `chunks` is a Proxy that synthesises each symbol string on access rather than
+ * materialising the whole pool: for a large file K can be hundreds of thousands
+ * of blocks and N = 3K symbols, so precomputing every symbol up front would
+ * burn billions of XOR ops and hundreds of MB of strings before the first frame
+ * (it looked like a hang). The renderer only ever touches a few indices at a
+ * time, and each symbol is cheap (avg degree ~ln K) to rebuild on demand.
  */
 export class FountainChunker {
   public chunks: string[] = [];
@@ -124,6 +147,10 @@ export class FountainChunker {
   public checksum: string = ''; // SHA256 of the original (unpadded) content
 
   private content: Buffer;
+  private blocks: Buffer[] = [];
+  private table: DegreeTable = { cumWeights: [0, 1], total: 1 };
+  private symbolCount: number = 0; // N (symbols, excluding the checksum chunk)
+  private fileSize: number = 0;
 
   constructor(content: Buffer) {
     this.content = content;
@@ -140,13 +167,27 @@ export class FountainChunker {
     return crypto.createHash('md5').update(this.content).digest('hex');
   }
 
+  /** Builds the `F|seq|K|fileSize|id|payload` string for one symbol on demand. */
+  private buildSymbol(seq: number): string {
+    const { indices } = sampleIndices(seq, this.k, this.table);
+    const symbol = Buffer.alloc(this.blockSize);
+    for (const idx of indices) {
+      const block = this.blocks[idx - 1];
+      for (let b = 0; b < this.blockSize; b++) {
+        symbol[b] ^= block[b];
+      }
+    }
+    return `F|${seq}|${this.k}|${this.fileSize}|${this.chunkId}|${symbol.toString('base64')}`;
+  }
+
   /**
    * Chooses a QR version from the terminal size (same heuristic as
-   * Chunker.calculateLayout), splits the content into K zero-padded blocks,
-   * and precomputes the symbol pool. `options.useBase64`/`addHeader`/
-   * `addChecksum`/`currentPart`/`totalParts` are ignored: fountain payloads
-   * are always base64, always headered, and always followed by a checksum
-   * chunk (the decoder relies on it to verify reconstruction).
+   * Chunker.calculateLayout) and splits the content into K zero-padded blocks.
+   * Symbols are generated lazily via the `chunks` proxy (see class doc).
+   * `options.useBase64`/`addHeader`/`addChecksum`/`currentPart`/`totalParts`
+   * are ignored: fountain payloads are always base64, always headered, and
+   * always followed by a checksum chunk (the decoder relies on it to verify
+   * reconstruction).
    */
   public calculateLayout(rows: number, options: ChunkOptions) {
     const availableRows = rows - options.buffer;
@@ -161,21 +202,21 @@ export class FountainChunker {
     this.blockSize = Math.floor(workingCapacity * 0.75);
     if (this.blockSize <= 0) this.blockSize = 16; // safety floor
 
-    const fileSize = this.content.length;
-    this.k = Math.max(1, Math.ceil(fileSize / this.blockSize));
+    this.fileSize = this.content.length;
+    this.k = Math.max(1, Math.ceil(this.fileSize / this.blockSize));
 
-    const table = buildDegreeTable(this.k);
+    this.table = buildDegreeTable(this.k);
 
-    const blocks: Buffer[] = [];
+    this.blocks = [];
     for (let i = 0; i < this.k; i++) {
       const start = i * this.blockSize;
       const slice = this.content.subarray(start, start + this.blockSize);
       if (slice.length === this.blockSize) {
-        blocks.push(slice);
+        this.blocks.push(slice);
       } else {
         const padded = Buffer.alloc(this.blockSize);
         slice.copy(padded);
-        blocks.push(padded);
+        this.blocks.push(padded);
       }
     }
 
@@ -183,22 +224,25 @@ export class FountainChunker {
     // round redundancy factor that guarantees the peeling decoder fully
     // recovers all K blocks from the complete pool, across K=1..2000+,
     // with comfortable margin for symbol loss during scanning.
-    const n = Math.max(this.k + 20, Math.ceil(this.k * 3));
+    this.symbolCount = Math.max(this.k + 20, Math.ceil(this.k * 3));
 
-    this.chunks = [];
-    for (let seq = 0; seq < n; seq++) {
-      const { indices } = sampleIndices(seq, this.k, table);
-      const symbol = Buffer.alloc(this.blockSize);
-      for (const idx of indices) {
-        const block = blocks[idx - 1];
-        for (let b = 0; b < this.blockSize; b++) {
-          symbol[b] ^= block[b];
+    // Total frames = N symbols + 1 trailing checksum chunk. Each index is
+    // synthesised on access; the backing array is sparse (no per-symbol cost).
+    const total = this.symbolCount + 1;
+    const checksumChunk = `CHECKSUM|T|${this.chunkId}|${this.checksum}`;
+    const target = new Array<string>(total);
+
+    this.chunks = new Proxy(target, {
+      get: (t, prop, receiver) => {
+        if (prop === 'length') return total;
+        if (typeof prop === 'string' && /^\d+$/.test(prop)) {
+          const i = Number(prop);
+          if (i < total) {
+            return i === this.symbolCount ? checksumChunk : this.buildSymbol(i);
+          }
         }
-      }
-      const payload = symbol.toString('base64');
-      this.chunks.push(`F|${seq}|${this.k}|${fileSize}|${this.chunkId}|${payload}`);
-    }
-
-    this.chunks.push(`CHECKSUM|T|${this.chunkId}|${this.checksum}`);
+        return Reflect.get(t, prop, receiver);
+      },
+    });
   }
 }

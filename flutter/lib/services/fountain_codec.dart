@@ -55,7 +55,13 @@ DegreeTable buildDegreeTable(int k) {
   final weights = List<int>.filled(k + 1, 0);
   weights[1] = 1;
   for (int i = 2; i <= k; i++) {
-    weights[i] = max(1, k ~/ (i * (i - 1)));
+    // No max(1, ...) here: the ideal-soliton weight floors to 0 once
+    // i*(i-1) > k (around i > sqrt(k)). Flooring those to 1 instead would
+    // give every high degree weight 1 — a huge uniform tail of enormous
+    // degrees that, for a large file (K in the hundreds of thousands), makes
+    // most symbols XOR tens of thousands of blocks (catastrophically slow and
+    // undecodable). Letting them stay 0 caps the max degree near sqrt(K).
+    weights[i] = k ~/ (i * (i - 1));
   }
 
   final s = max(2, sqrt(k).floor());
@@ -75,10 +81,20 @@ DegreeTable buildDegreeTable(int k) {
 }
 
 int _pickDegree(int r, List<int> cumWeights) {
-  for (int d = 1; d < cumWeights.length; d++) {
-    if (r < cumWeights[d]) return d;
+  // Smallest degree d (>= 1) with cumWeights[d] > r. cumWeights is strictly
+  // increasing, so binary search — a linear scan here is O(K) per symbol, which
+  // dominates decode time for large files (K in the hundreds of thousands).
+  var lo = 1;
+  var hi = cumWeights.length - 1;
+  while (lo < hi) {
+    final mid = (lo + hi) >> 1;
+    if (cumWeights[mid] > r) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
   }
-  return cumWeights.length - 1;
+  return lo;
 }
 
 /// The (degree, source-block indices) tuple derived for one fountain symbol.

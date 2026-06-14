@@ -33,18 +33,19 @@ void main() {
 
     test('k=10 matches the golden table', () {
       final table = buildDegreeTable(10);
-      expect(table.cumWeights, [0, 4, 10, 14, 15, 16, 17, 18, 19, 20, 21]);
-      expect(table.total, 21);
+      expect(table.cumWeights, [0, 4, 10, 14, 14, 14, 14, 14, 14, 14, 14]);
+      expect(table.total, 14);
     });
 
-    test('k=100 matches the golden table', () {
+    test('k=100 caps the max degree near sqrt(k) (no high-degree tail)', () {
       final table = buildDegreeTable(100);
-      expect(table.total, 214);
+      expect(table.total, 124);
       expect(table.cumWeights[1], 11);
       expect(table.cumWeights[2], 66);
       expect(table.cumWeights[3], 85);
+      // Degree 10 already reaches the total — degrees 11..100 carry zero weight.
       expect(table.cumWeights[10], 124);
-      expect(table.cumWeights[100], 214);
+      expect(table.cumWeights[100], 124);
     });
   });
 
@@ -53,17 +54,17 @@ void main() {
       expect(sampleIndices(0, 10).degree, 3);
       expect(sampleIndices(0, 10).indices, [2, 3, 5]);
 
-      expect(sampleIndices(1, 10).degree, 1);
-      expect(sampleIndices(1, 10).indices, [8]);
+      expect(sampleIndices(1, 10).degree, 2);
+      expect(sampleIndices(1, 10).indices, [2, 8]);
 
-      expect(sampleIndices(2, 10).degree, 2);
-      expect(sampleIndices(2, 10).indices, [1, 7]);
+      expect(sampleIndices(2, 10).degree, 1);
+      expect(sampleIndices(2, 10).indices, [1]);
 
-      expect(sampleIndices(3, 10).degree, 9);
-      expect(sampleIndices(3, 10).indices, [1, 2, 3, 4, 5, 6, 7, 9, 10]);
+      expect(sampleIndices(3, 10).degree, 3);
+      expect(sampleIndices(3, 10).indices, [4, 9, 10]);
 
-      expect(sampleIndices(4, 10).degree, 2);
-      expect(sampleIndices(4, 10).indices, [1, 3]);
+      expect(sampleIndices(4, 10).degree, 1);
+      expect(sampleIndices(4, 10).indices, [3]);
     });
 
     test('k=1 always returns degree 1, index [1]', () {
