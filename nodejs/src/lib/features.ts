@@ -6,6 +6,7 @@ export const FEATURE_INTERACTIVE_CONTROLS =
   process.env.PORTER_FEATURE_INTERACTIVE_CONTROLS !== 'false';
 export const FEATURE_SERVE = process.env.PORTER_FEATURE_SERVE !== 'false';
 export const FEATURE_JOIN = process.env.PORTER_FEATURE_JOIN !== 'false';
+export const FEATURE_FOUNTAIN = process.env.PORTER_FEATURE_FOUNTAIN !== 'false';
 
 export const BUILD_FEATURES = {
   base64: FEATURE_BASE64,
@@ -15,4 +16,5 @@ export const BUILD_FEATURES = {
   interactiveControls: FEATURE_INTERACTIVE_CONTROLS,
   serve: FEATURE_SERVE,
   join: FEATURE_JOIN,
+  fountain: FEATURE_FOUNTAIN,
 } as const;

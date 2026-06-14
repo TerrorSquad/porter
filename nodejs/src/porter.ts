@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import tty from 'tty';
 import { Chunker } from './lib/chunker.js';
+import { FountainChunker } from './lib/fountain.js';
 import {
   FEATURE_BASE64,
   FEATURE_INTERACTIVE_CONTROLS,
@@ -12,6 +13,7 @@ import {
   FEATURE_MULTI_QR,
   FEATURE_SERVE,
   FEATURE_JOIN,
+  FEATURE_FOUNTAIN,
 } from './lib/features.js';
 import { Renderer } from './lib/renderer.js';
 import { StateManager } from './lib/state.js';
@@ -165,6 +167,12 @@ function runSender() {
       console.log("  --multi=N|auto    Render N QR codes in a grid (1-4, or 'auto')");
       console.log('                    Speeds up transfer: auto-detected or manual');
     }
+    if (FEATURE_FOUNTAIN) {
+      console.log('  --fountain        Use fountain (LT code) coding instead of sequential');
+      console.log('                    chunks: the receiver can reconstruct the file from');
+      console.log('                    ANY sufficient subset of frames, in any order.');
+      console.log('                    Best for long/lossy scans. --base64 has no effect.');
+    }
     console.log('  --no-info         Hide the info sidebar (chunk/progress/etc.)');
     console.log('  --speed=<seconds> QR code delay (Default: 0.5)');
     console.log('                    0.5 = 2 chunks/sec (default, works everywhere)');
@@ -212,6 +220,11 @@ function runSender() {
     console.error('Error: this build was compiled without multi-QR support.');
     process.exit(1);
   }
+  if (flags['--fountain'] && !FEATURE_FOUNTAIN) {
+    console.error('Error: this build was compiled without fountain coding support.');
+    process.exit(1);
+  }
+  const useFountain = FEATURE_FOUNTAIN && flags['--fountain'] === 'true';
   const useBase64 = FEATURE_BASE64 && requestedBase64;
   const useInverted = FEATURE_INVERT && flags['--invert'] === 'true';
   const noInfo = flags['--no-info'] === 'true';
@@ -258,7 +271,9 @@ function runSender() {
   }
 
   // --- Processing ---
-  const chunker = new Chunker(content);
+  const chunker: Chunker | FountainChunker = useFountain
+    ? new FountainChunker(content)
+    : new Chunker(content);
   chunker.calculateLayout(process.stdout.rows || 24, {
     buffer,
     useBase64,
