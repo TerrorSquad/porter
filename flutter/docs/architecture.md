@@ -7,11 +7,13 @@ flutter/
 ├── lib/
 │   ├── main.dart                 # App entry point, theme setup
 │   ├── models/
-│   │   ├── chunk.dart           # DataChunk, ChecksumChunk parsing
+│   │   ├── chunk.dart           # DataChunk, FountainChunk, ChecksumChunk parsing
 │   │   └── transfer.dart        # Transfer state (id, chunks, progress)
 │   ├── services/
 │   │   ├── chunk_parser.dart    # QR → chunk/checksum parsing
 │   │   ├── assembler.dart       # Core assembly logic, SHA-256, gzip
+│   │   ├── fountain_codec.dart  # Shared LT-code PRNG/degree table (TS parity)
+│   │   ├── fountain_decoder.dart # Peeling + GF(2) decoder for --fountain
 │   │   └── file_handler.dart    # Save to Downloads/Documents
 │   ├── providers/
 │   │   └── scanner_provider.dart # State management (Provider)
@@ -79,9 +81,12 @@ Downloads folder
 
 ### ChunkParser
 
-- Static `parseQR()`: returns DataChunk | ChecksumChunk | null
-- Handles both formats:
+- Static `parseQR()`: returns DataChunk | FountainChunk | ChecksumChunk | null
+- Handles the formats:
   - Data: `index|total|mode|id|payload`
+  - Fountain (LT codes): `F|seq|K|fileSize|id|payload` — Assembler feeds these to
+    a per-transfer `FountainDecoder`, which recovers source blocks and pushes
+    them through the same `addChunk`/progress machinery as sequential mode
   - Checksum: `CHECKSUM|T|id|sha256`
 
 ### FileHandler

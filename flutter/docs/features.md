@@ -12,6 +12,7 @@
 ### Data Parsing & Assembly
 
 - [x] Parse chunk format: `index|total|mode|id|payload`
+- [x] Parse fountain format: `F|seq|K|fileSize|id|payload` (LT codes)
 - [x] Deduplication: skip duplicate scans
 - [x] Support modes: T (text), B (binary), C (compressed)
 - [x] Header validation
@@ -22,6 +23,7 @@
 - [x] Gzip decompression for mode C
 - [x] Base64 decoding for modes B & C
 - [x] Text mode (T) UTF-8 handling
+- [x] Fountain (LT code) decode: peeling + GF(2) fallback, any-subset recovery
 
 ### SHA-256 Verification
 
