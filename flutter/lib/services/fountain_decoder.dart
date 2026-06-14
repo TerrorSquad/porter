@@ -44,6 +44,12 @@ class FountainDecoder {
   /// Number of source blocks recovered so far.
   int get recoveredCount => _recovered.length;
 
+  /// Number of distinct symbols ingested so far. Unlike [recoveredCount], this
+  /// climbs steadily as frames are scanned, so it's the meaningful progress
+  /// signal for the UI — peeling recovers almost nothing until ~K symbols are
+  /// in, then completes in a burst.
+  int get symbolCount => _seenSeqs.length;
+
   /// Whether symbol [seq] has already been ingested (so it would be a no-op).
   bool hasSeq(int seq) => _seenSeqs.contains(seq);
 

@@ -137,17 +137,19 @@ void main() {
       expect(find.text('Fountain'), findsOneWidget);
     });
 
-    testWidgets('fountain transfers count blocks and relabel the missing text', (tester) async {
+    testWidgets('fountain transfers show symbols collected and relabel missing text', (tester) async {
       final transfer = Transfer(id: 'AB')
         ..encoding = 'fountain'
         ..mode = 'B'
         ..total = 4
         ..fountainFileSize = 50
+        ..fountainSymbols = 7
         ..seenIndices.addAll({1, 3});
 
       await pumpCard(tester, transfer);
 
-      expect(find.text('2 / 4 blocks'), findsOneWidget);
+      // Symbol count is the headline progress signal for fountain transfers.
+      expect(find.text('7 symbols · 2 / 4 blocks'), findsOneWidget);
 
       await tester.tap(find.text('Show missing ▼'));
       await tester.pump();

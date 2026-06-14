@@ -414,14 +414,24 @@ class _ScanningScreenState extends State<ScanningScreen> {
                     // Progress
                     if (transfer != null) ...[
                       LinearProgressIndicator(
-                        value: transfer.progress / 100,
+                        value: transfer.displayProgress,
                         minHeight: 8,
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        '${transfer.seenIndices.length} / ${transfer.total} chunks',
+                        transfer.progressLabel,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
+                      if (transfer.isFountain && !transfer.isComplete) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Fountain: keep scanning — blocks decode in a burst near the end',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: Colors.white54),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       _buildHud(context, provider, settings),
                     ] else ...[
