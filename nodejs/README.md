@@ -233,6 +233,17 @@ xorshift32 PRNG and degree table (`nodejs/src/lib/fountain.ts` ↔
 tests). The existing `CHECKSUM|T|<id>|<sha256>` frame is reused verbatim as the
 final frame in the pool.
 
+### Receiving fountain transfers (`porter serve`)
+
+The HTTP receiver decodes fountain frames too — no flag needed, it auto-detects
+`F|...` frames the same way it auto-detects `CHECKSUM|`. Symbols are fed to a
+per-transfer peeling + GF(2) decoder (`nodejs/src/lib/fountain-decoder.ts`); once
+enough are collected the recovered file is written to `<id>/<id>.joined` and
+verified against the checksum frame. Because fountain decode is all-or-nothing,
+symbols are held in memory for the life of the process (a restart mid-transfer
+loses fountain progress; sequential transfers still resume from their part
+files).
+
 ## 🔧 Technology Stack
 
 | Component            | Purpose               |
