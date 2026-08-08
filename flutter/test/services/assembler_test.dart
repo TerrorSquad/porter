@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:porter_receiver/models/hydrated_transfer.dart';
 import 'package:porter_receiver/models/transfer.dart';
 import 'package:porter_receiver/services/assembler.dart';
 import 'package:porter_receiver/services/fountain_codec.dart';
@@ -247,6 +248,57 @@ void main() {
 
       assembler.reset();
       expect(assembler.transfers, isEmpty);
+    });
+
+    group('hydrate', () {
+      test('populates transfers and credits seenIndices without re-parsing', () {
+        final progressed = <Transfer>[];
+        final assembler = Assembler(onProgress: progressed.add);
+
+        assembler.hydrate([
+          HydratedTransfer(
+            id: 'AB',
+            mode: 'T',
+            encoding: 'sequential',
+            total: 3,
+            fountainFileSize: null,
+            checksum: null,
+            transferDirPath: '/tmp/AB',
+            chunks: {1: utf8.encode('Hi'), 3: utf8.encode('Yo')},
+          ),
+        ]);
+
+        final t = assembler.transfers['AB']!;
+        expect(t.seenIndices, {1, 3});
+        expect(t.total, 3);
+        expect(t.transferDirPath, '/tmp/AB');
+        expect(progressed.single.id, 'AB');
+      });
+
+      test('triggers completion when the hydrated set is already complete', () {
+        Transfer? completed;
+        final assembler = Assembler(onComplete: (t) => completed = t);
+
+        final content = utf8.encode('Hello');
+        final checksum = sha256.convert(content).toString();
+        assembler.hydrate([
+          HydratedTransfer(
+            id: 'AB',
+            mode: 'T',
+            encoding: 'sequential',
+            total: 1,
+            fountainFileSize: null,
+            checksum: checksum,
+            transferDirPath: '/tmp/AB',
+            chunks: {1: content},
+          ),
+        ]);
+
+        expect(completed, isNotNull);
+        expect(completed!.isComplete, true);
+        expect(completed!.verified, true);
+        expect(completed!.assembled, content);
+      });
     });
   });
 }

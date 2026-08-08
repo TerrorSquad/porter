@@ -1,3 +1,5 @@
+import 'progress_snapshot.dart';
+
 class Transfer {
   final String id;
   int total = 0;
@@ -75,14 +77,35 @@ class Transfer {
       ];
 
   /// Total bytes received so far, across all chunks (before any
-  /// decompression for mode 'C').
-  int get receivedBytes => chunks.values.fold(0, (sum, c) => sum + c.length);
+  /// decompression for mode 'C'). Kept in sync by [addChunk]/[applySnapshot]
+  /// rather than derived on read, since a main-isolate mirror [Transfer]
+  /// (see [applySnapshot]) never holds the actual chunk bytes.
+  int receivedBytes = 0;
 
   void addChunk(int index, List<int> data) {
     if (!seenIndices.contains(index)) {
       seenIndices.add(index);
       chunks[index] = data;
+      receivedBytes += data.length;
     }
+  }
+
+  /// Updates every display-relevant field from a [ProgressSnapshot] posted
+  /// by the worker isolate. Never touches [chunks]/[assembled] — this
+  /// transfer instance is a lightweight main-isolate mirror; the real bytes
+  /// stay inside the worker isolate's own [Transfer] until completion.
+  void applySnapshot(ProgressSnapshot s) {
+    total = s.total;
+    mode = s.mode;
+    encoding = s.encoding;
+    fountainFileSize = s.fountainFileSize;
+    fountainSymbols = s.fountainSymbols;
+    seenIndices = s.seenIndices.toSet();
+    receivedBytes = s.receivedBytes;
+    checksum = s.checksum;
+    verified = s.verified;
+    error = s.error;
+    completedAt = s.completedAt;
   }
 
   void reset() {
@@ -93,6 +116,7 @@ class Transfer {
     fountainSymbols = 0;
     chunks.clear();
     seenIndices.clear();
+    receivedBytes = 0;
     checksum = null;
     assembled = null;
     verified = null;

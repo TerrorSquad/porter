@@ -3,15 +3,17 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/relay_state.dart';
 import '../models/transfer.dart';
-import '../services/assembler.dart';
-import '../services/chunk_storage.dart';
+import '../services/assembler_worker.dart';
 import '../services/relay_service.dart';
 
 class ScannerProvider extends ChangeNotifier {
   static const _rateWindow = Duration(seconds: 3);
 
-  final Assembler assembler;
+  AssemblerWorker? _worker;
+  final List<String> _pendingBeforeReady = [];
+
   Transfer? _activeTransfer;
+  final Map<String, Transfer> _transfers = {};
   final List<DateTime> _recentScans = [];
   final List<(DateTime, int)> _recentBytes = [];
 
@@ -29,19 +31,25 @@ class ScannerProvider extends ChangeNotifier {
   /// Called when a transfer finishes assembling successfully (not on error).
   Function(Transfer)? onTransferComplete;
 
-  ScannerProvider()
-      : assembler = Assembler(
-          onProgress: (t) {},
-          onComplete: (t) {},
-        ) {
-    assembler.onProgress = _onProgress;
-    assembler.onComplete = _onComplete;
-    assembler.onChunkBytes = _onChunkBytes;
-    assembler.onChunkReceived = _onChunkReceived;
+  late final Future<void> ready;
+
+  ScannerProvider() {
+    ready = _init();
+  }
+
+  Future<void> _init() async {
+    final worker = await AssemblerWorker.spawn(_onWorkerEvent);
+    _worker = worker;
+    for (final raw in _pendingBeforeReady) {
+      worker.ingestQR(raw);
+    }
+    _pendingBeforeReady.clear();
   }
 
   Transfer? get activeTransfer => _activeTransfer;
-  Map<String, Transfer> get allTransfers => assembler.transfers;
+  Map<String, Transfer> get allTransfers => _transfers;
+
+  Transfer _transferFor(String id) => _transfers.putIfAbsent(id, () => Transfer(id: id));
 
   /// QR codes processed per second, averaged over the last [_rateWindow].
   double get scansPerSecond {
@@ -58,23 +66,21 @@ class ScannerProvider extends ChangeNotifier {
     return total / _rateWindow.inSeconds;
   }
 
-  void _onChunkBytes(int bytes) {
-    _recentBytes.add((DateTime.now(), bytes));
-  }
-
   void ingestQR(String raw, {String? relayUrl, String? outputDirectory}) {
-    _currentOutputDirectory = outputDirectory;
+    if (outputDirectory != _currentOutputDirectory) {
+      _currentOutputDirectory = outputDirectory;
+      _worker?.setOutputDirectory(outputDirectory);
+    }
 
     final now = DateTime.now();
     _recentScans.add(now);
     _recentScans.removeWhere((t) => now.difference(t) > _rateWindow);
 
-    final isNew = assembler.ingest(raw);
-    if (isNew) {
-      totalScanned++;
-      notifyListeners();
+    final worker = _worker;
+    if (worker == null) {
+      _pendingBeforeReady.add(raw);
     } else {
-      duplicatesSkipped++;
+      worker.ingestQR(raw);
     }
 
     if (relayUrl != null && relayUrl.isNotEmpty) {
@@ -105,45 +111,48 @@ class ScannerProvider extends ChangeNotifier {
     });
   }
 
-  void _onProgress(Transfer t) {
-    _activeTransfer = t;
-    notifyListeners();
-  }
+  /// Test-only seam: applies a [WorkerEvent] as if it arrived from the
+  /// worker isolate, without requiring a real isolate spawn. Widget tests use
+  /// this to drive UI state deterministically — spawning/tearing down a real
+  /// isolate inside the `flutter_tester` headless test shell is unreliable.
+  @visibleForTesting
+  void applyWorkerEvent(WorkerEvent event) => _onWorkerEvent(event);
 
-  /// Persists a newly-received chunk to the transfer's directory on disk.
-  void _onChunkReceived(Transfer t, int index, List<int> bytes) {
-    final outputDirectory = _currentOutputDirectory;
-    unawaited(
-      ChunkStorage.writeChunk(t, index, bytes, outputDirectory: outputDirectory)
-          .then((_) => notifyListeners())
-          .catchError((Object e) => debugPrint('Failed to save chunk $index for ${t.id}: $e')),
-    );
-  }
-
-  void _onComplete(Transfer t) {
-    _activeTransfer = t;
-    final outputDirectory = _currentOutputDirectory;
-    if (t.error == null) {
-      if (t.assembled != null) {
-        unawaited(
-          ChunkStorage.writeAssembledFile(t, outputDirectory: outputDirectory)
-              .then((_) => ChunkStorage.writeMetadata(t, outputDirectory: outputDirectory))
-              .then((_) => notifyListeners())
-              .catchError((Object e) => debugPrint('Failed to save transfer ${t.id}: $e')),
-        );
-      }
-      onTransferComplete?.call(t);
-    } else {
-      unawaited(
-        ChunkStorage.writeMetadata(t, outputDirectory: outputDirectory)
-            .catchError((Object e) => debugPrint('Failed to save metadata for ${t.id}: $e')),
-      );
+  void _onWorkerEvent(WorkerEvent event) {
+    switch (event) {
+      case ScanCountedEvent(:final isNew):
+        if (isNew) {
+          totalScanned++;
+        } else {
+          duplicatesSkipped++;
+        }
+        notifyListeners();
+      case ProgressSnapshotEvent(:final snapshot, :final fromHydration):
+        // A hydrated-from-disk transfer populates allTransfers (so it shows
+        // up in the transfers list) but shouldn't jump to the foreground as
+        // the scan screen's headline transfer before the user scans anything
+        // this session.
+        _transferFor(snapshot.id).applySnapshot(snapshot);
+        if (!fromHydration) _activeTransfer = _transfers[snapshot.id];
+        notifyListeners();
+      case ChunkBytesEvent(:final bytes):
+        _recentBytes.add((DateTime.now(), bytes));
+      case TransferCompletedEvent(:final snapshot, :final assembled):
+        final t = _transferFor(snapshot.id)..applySnapshot(snapshot);
+        t.assembled = assembled;
+        _activeTransfer = t;
+        if (t.error == null) {
+          onTransferComplete?.call(t);
+        }
+        notifyListeners();
+      case PersistErrorEvent(:final message):
+        debugPrint(message);
     }
-    notifyListeners();
   }
 
   void resetAll() {
-    assembler.reset();
+    _worker?.reset();
+    _transfers.clear();
     _activeTransfer = null;
     totalScanned = 0;
     duplicatesSkipped = 0;
@@ -156,7 +165,8 @@ class ScannerProvider extends ChangeNotifier {
   }
 
   void reset(String id) {
-    assembler.reset(id);
+    _worker?.reset(id);
+    _transfers.remove(id);
     if (_activeTransfer?.id == id) {
       _activeTransfer = null;
     }
@@ -172,5 +182,24 @@ class ScannerProvider extends ChangeNotifier {
       transfer.savedPath = path;
       notifyListeners();
     }
+  }
+
+  /// Flushes every transfer's debounced metadata write immediately — call
+  /// when the app is about to background or be killed.
+  void flushAll() => _worker?.flushAll();
+
+  /// Rebuilds any incomplete transfers found under [outputDirectory] from
+  /// their previously-persisted chunks, so they appear in [allTransfers]
+  /// without re-scanning. Call once at startup after [ready] resolves and the
+  /// output directory is known (see [SettingsProvider.ready]).
+  Future<void> hydrateFromDisk(String? outputDirectory) async {
+    await ready;
+    _worker?.hydrateFromDisk(outputDirectory);
+  }
+
+  @override
+  void dispose() {
+    unawaited(_worker?.dispose());
+    super.dispose();
   }
 }

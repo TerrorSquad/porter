@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../models/hydrated_transfer.dart';
 import '../models/transfer.dart';
 import 'file_handler.dart';
+
+final _chunkFilenameRegExp = RegExp(r'^chunk_(\d+)\.bin$');
 
 /// Incrementally persists a [Transfer] to disk as its chunks arrive, so the
 /// data survives even if the transfer is never explicitly saved.
@@ -34,7 +37,9 @@ class ChunkStorage {
     return dir;
   }
 
-  /// Writes [bytes] for chunk [index] and refreshes the metadata file.
+  /// Writes [bytes] for chunk [index]. Does not touch metadata.json — callers
+  /// persist metadata separately (see [ChunkMetadataWriter]) so a burst of
+  /// chunk arrivals doesn't re-serialize the whole metadata file per chunk.
   static Future<void> writeChunk(
     Transfer transfer,
     int index,
@@ -47,8 +52,6 @@ class ChunkStorage {
     final chunksDir = Directory('${dir.path}/chunks');
     await chunksDir.create(recursive: true);
     await File('${chunksDir.path}/${_chunkFilename(index)}').writeAsBytes(bytes);
-
-    await writeMetadata(transfer, outputDirectory: outputDirectory);
   }
 
   /// Writes a JSON summary of [transfer]'s current state.
@@ -63,6 +66,8 @@ class ChunkStorage {
     final metadata = {
       'id': transfer.id,
       'mode': transfer.mode,
+      'encoding': transfer.encoding,
+      'fountainFileSize': transfer.fountainFileSize,
       'total': transfer.total,
       'seenIndices': seenIndices,
       'missingIndices': transfer.missingIndices,
@@ -92,5 +97,78 @@ class ChunkStorage {
     final file = File('${dir.path}/${transfer.id}$ext');
     await file.writeAsBytes(transfer.assembled!);
     return file.path;
+  }
+
+  /// Scans [outputDirectory] for incomplete transfer directories (those with
+  /// a `chunks/` folder but no already-recovered/failed and no final output
+  /// file) and rebuilds each one's chunk bytes from disk, so a killed/
+  /// restarted app can resume without rescanning already-received chunks.
+  ///
+  /// Trusts only `chunk_NNNNNN.bin` filenames as the source of truth for
+  /// what's been received — never metadata.json's seenIndices, which may lag
+  /// behind by up to the debounce interval (see ChunkMetadataWriter).
+  /// metadata.json is read only for fields not derivable from the .bin files
+  /// themselves (mode, encoding, total, checksum); a missing or corrupt
+  /// metadata.json still yields a valid hydration with those fields defaulted.
+  static Future<List<HydratedTransfer>> hydrateAll({String? outputDirectory}) async {
+    final base = await FileHandler.resolveOutputDirectory(outputDirectory);
+    if (!await base.exists()) return [];
+
+    final result = <HydratedTransfer>[];
+    await for (final entry in base.list()) {
+      if (entry is! Directory) continue;
+      final hydrated = await _hydrateOne(entry);
+      if (hydrated != null) result.add(hydrated);
+    }
+    return result;
+  }
+
+  static Future<HydratedTransfer?> _hydrateOne(Directory transferDir) async {
+    final chunksDir = Directory('${transferDir.path}/chunks');
+    if (!await chunksDir.exists()) return null;
+
+    final chunks = <int, List<int>>{};
+    await for (final entry in chunksDir.list()) {
+      if (entry is! File) continue;
+      final match = _chunkFilenameRegExp.firstMatch(entry.uri.pathSegments.last);
+      if (match == null) continue;
+      final index = int.parse(match.group(1)!);
+      chunks[index] = await entry.readAsBytes();
+    }
+    if (chunks.isEmpty) return null;
+
+    final id = transferDir.uri.pathSegments.where((s) => s.isNotEmpty).last;
+
+    String mode = 'T';
+    String encoding = 'sequential';
+    int total = 0;
+    int? fountainFileSize;
+    String? checksum;
+    final metaFile = File('${transferDir.path}/metadata.json');
+    if (await metaFile.exists()) {
+      try {
+        final json = jsonDecode(await metaFile.readAsString()) as Map<String, dynamic>;
+        mode = json['mode'] as String? ?? mode;
+        encoding = json['encoding'] as String? ?? encoding;
+        total = json['total'] as int? ?? total;
+        fountainFileSize = json['fountainFileSize'] as int?;
+        checksum = json['checksum'] as String?;
+      } catch (_) {
+        // Corrupt/partial metadata.json (e.g. killed mid-write) — proceed
+        // with .bin-derived state only; total/mode/checksum are re-learned
+        // once the sender re-sends header/checksum chunks.
+      }
+    }
+
+    return HydratedTransfer(
+      id: id,
+      mode: mode,
+      encoding: encoding,
+      total: total,
+      fountainFileSize: fountainFileSize,
+      checksum: checksum,
+      transferDirPath: transferDir.path,
+      chunks: chunks,
+    );
   }
 }

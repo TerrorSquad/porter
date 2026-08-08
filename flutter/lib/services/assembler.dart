@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import '../models/chunk.dart';
+import '../models/hydrated_transfer.dart';
 import '../models/transfer.dart';
 import 'chunk_parser.dart';
 import 'fountain_decoder.dart';
@@ -102,6 +103,35 @@ class Assembler {
       id,
       () => Transfer(id: id),
     );
+  }
+
+  /// Rebuilds transfer state from previously-persisted chunks (see
+  /// `ChunkStorage.hydrateAll`), without re-running `ingest` for each chunk.
+  ///
+  /// Known limitation: for fountain-encoded transfers, only the already-
+  /// recovered source blocks are restored — the underlying `FountainDecoder`'s
+  /// partial peeling state (pending symbols, seen seqs) cannot be
+  /// reconstructed from recovered bytes alone, so a resumed fountain transfer
+  /// starts peeling from scratch. Already-recovered blocks are credited
+  /// immediately; new symbols scanned post-resume feed a fresh decoder as
+  /// normal. Worst case is redundantly re-scanning some already-seen symbols,
+  /// not a correctness loss — final SHA-256 verification still gates
+  /// completion.
+  void hydrate(List<HydratedTransfer> hydrated) {
+    for (final h in hydrated) {
+      final transfer = getOrCreate(h.id, h.total, h.mode);
+      transfer.mode = h.mode;
+      transfer.encoding = h.encoding;
+      transfer.total = h.total;
+      transfer.fountainFileSize = h.fountainFileSize;
+      transfer.checksum = h.checksum;
+      transfer.transferDirPath = h.transferDirPath;
+      for (final entry in h.chunks.entries) {
+        transfer.addChunk(entry.key, entry.value);
+      }
+      onProgress?.call(transfer);
+      _tryComplete(transfer);
+    }
   }
 
   void reset([String? id]) {
