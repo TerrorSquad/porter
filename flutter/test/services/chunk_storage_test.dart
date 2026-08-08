@@ -127,5 +127,18 @@ void main() {
         await emptyDir.delete(recursive: true);
       }
     });
+
+    test('skips a transfer that already has its final output file written', () async {
+      final t = Transfer(id: 'AB')
+        ..total = 1
+        ..mode = 'T'
+        ..assembled = [1, 2, 3];
+      await ChunkStorage.writeChunk(t, 1, [1, 2, 3], outputDirectory: tmpDir.path);
+      await ChunkStorage.writeAssembledFile(t, outputDirectory: tmpDir.path);
+
+      final hydrated = await ChunkStorage.hydrateAll(outputDirectory: tmpDir.path);
+
+      expect(hydrated, isEmpty);
+    });
   });
 }

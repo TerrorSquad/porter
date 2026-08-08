@@ -127,6 +127,16 @@ class ChunkStorage {
     final chunksDir = Directory('${transferDir.path}/chunks');
     if (!await chunksDir.exists()) return null;
 
+    final id = transferDir.uri.pathSegments.where((s) => s.isNotEmpty).last;
+
+    // A completed transfer already has its final <id>.<ext> output file
+    // written (see writeAssembledFile) — nothing to resume, so skip it
+    // rather than needlessly reading every chunk back into memory.
+    final hasFinalOutput = await transferDir
+        .list()
+        .any((e) => e is File && e.uri.pathSegments.last.startsWith('$id.'));
+    if (hasFinalOutput) return null;
+
     final chunks = <int, List<int>>{};
     await for (final entry in chunksDir.list()) {
       if (entry is! File) continue;
@@ -136,8 +146,6 @@ class ChunkStorage {
       chunks[index] = await entry.readAsBytes();
     }
     if (chunks.isEmpty) return null;
-
-    final id = transferDir.uri.pathSegments.where((s) => s.isNotEmpty).last;
 
     String mode = 'T';
     String encoding = 'sequential';
