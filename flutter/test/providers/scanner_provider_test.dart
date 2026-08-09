@@ -97,6 +97,67 @@ void main() {
       await waitFor(() => provider.scansPerSecond > 0 && provider.bytesPerSecond > 0);
     });
 
+    test('estimatedSenderIntervalMs is null until enough new chunks arrive, then '
+        'reflects new-chunk gaps and ignores duplicate scans', () async {
+      expect(provider.estimatedSenderIntervalMs, null);
+
+      // Duplicates alone (no distinct new chunks yet) must not produce an
+      // estimate — they say nothing about how fast the sender is advancing.
+      provider.ingestQR('1|5|T|AB|One', outputDirectory: tmpDir.path);
+      await waitFor(() => provider.totalScanned == 1);
+      for (var i = 0; i < 5; i++) {
+        provider.ingestQR('1|5|T|AB|One', outputDirectory: tmpDir.path); // duplicate
+      }
+      await waitFor(() => provider.duplicatesSkipped == 5);
+      expect(provider.estimatedSenderIntervalMs, null);
+
+      // Distinct new chunks, spaced ~30ms apart, give a real estimate.
+      for (final line in ['2|5|T|AB|Two', '3|5|T|AB|Thr', '4|5|T|AB|Fou']) {
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        provider.ingestQR(line, outputDirectory: tmpDir.path);
+      }
+      await waitFor(() => provider.totalScanned == 4);
+
+      final estimate = provider.estimatedSenderIntervalMs;
+      expect(estimate, isNotNull);
+      expect(estimate!, greaterThan(0));
+      // Loose bound — real timing, not exact — just proves it's in the
+      // right ballpark for a ~30ms-spaced sequence, not e.g. milliseconds
+      // from the unrelated first chunk/duplicate burst.
+      expect(estimate, lessThan(500));
+    });
+
+    test('speedHint suggests increasing sender speed when duplicates dominate', () async {
+      expect(provider.speedHint, null);
+
+      // One new chunk, then many duplicate scans of it (attempts/frame high)
+      // — the classic "receiver is idling between sender frame changes" case.
+      provider.ingestQR('1|5|T|AB|One', outputDirectory: tmpDir.path);
+      await waitFor(() => provider.totalScanned == 1);
+      for (var i = 0; i < 10; i++) {
+        provider.ingestQR('1|5|T|AB|One', outputDirectory: tmpDir.path);
+      }
+      await waitFor(() => provider.duplicatesSkipped == 10);
+
+      for (final line in ['2|5|T|AB|Two', '3|5|T|AB|Thr']) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        provider.ingestQR(line, outputDirectory: tmpDir.path);
+      }
+      await waitFor(() => provider.totalScanned == 3);
+
+      expect(provider.speedHint, SpeedHint.increase);
+    });
+
+    test('speedHint suggests slowing down when almost every scan is a new chunk', () async {
+      // Every scan lands a new chunk — attempts/frame near 1, no slack.
+      for (final line in ['1|5|T|AB|One', '2|5|T|AB|Two', '3|5|T|AB|Thr', '4|5|T|AB|Fou']) {
+        provider.ingestQR(line, outputDirectory: tmpDir.path);
+      }
+      await waitFor(() => provider.totalScanned == 4);
+
+      expect(provider.speedHint, SpeedHint.decrease);
+    });
+
     test('hydrateFromDisk resumes an interrupted transfer without re-ingesting', () async {
       // Simulate a transfer that was killed after 2 of 3 chunks were saved.
       provider.ingestQR('1|3|T|AB|One', outputDirectory: tmpDir.path);

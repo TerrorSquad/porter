@@ -17,7 +17,7 @@ void main() {
       await settings.ready;
 
       expect(settings.outputDirectory, null);
-      expect(settings.cameraResolution, CameraResolutionPreset.p720);
+      expect(settings.cameraResolution, CameraResolutionPreset.p1080);
       expect(settings.cameraFps, CameraFpsPreset.auto);
       expect(settings.relayUrl, '');
       expect(settings.autoSave, false);

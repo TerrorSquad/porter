@@ -25,7 +25,7 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
   late MobileScannerController controller;
   List<Map<String, String>> _availableCameras = [];
   String? _activeCameraId;
-  CameraResolutionPreset _activeResolution = CameraResolutionPreset.p720;
+  CameraResolutionPreset _activeResolution = CameraResolutionPreset.p1080;
   CameraFpsPreset _activeFps = CameraFpsPreset.auto;
   bool _ready = false;
   bool _restarting = false;
@@ -47,6 +47,10 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
       // noDuplicates removes that artificial gate and scans as fast as
       // the camera/Vision pipeline allows.
       detectionSpeed: DetectionSpeed.noDuplicates,
+      // Porter only ever emits QR codes. Restricting the symbology set
+      // narrows the native decode request (Vision/ML Kit) to just QR
+      // instead of scanning for every supported barcode format each frame.
+      formats: const [BarcodeFormat.qrCode],
     );
     _initCamera();
 
@@ -134,6 +138,7 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
       cameraResolution: resolution.size,
       cameraFps: fps.fps,
       detectionSpeed: DetectionSpeed.noDuplicates,
+      formats: const [BarcodeFormat.qrCode],
     );
     next.cameraId = _activeCameraId;
 
@@ -293,8 +298,20 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
     final scanned = provider.totalScanned + provider.duplicatesSkipped;
     final rate = provider.scansPerSecond;
     final bytesRate = provider.bytesPerSecond;
+    final senderMs = provider.estimatedSenderIntervalMs;
+    // `rate` is the receiver's raw decode-attempt rate (duplicates and all —
+    // dominated by how many times each still-displayed frame gets re-decoded
+    // before the sender advances). `senderMs` estimates the sender's actual
+    // frame interval from new-chunk arrival gaps, so it's the number that
+    // actually answers "could the sender go faster?".
+    final senderPart = senderMs != null ? ' · sender ~${senderMs}ms/frame' : '';
+    final hintPart = switch (provider.speedHint) {
+      SpeedHint.increase => ' · could go faster ⚡',
+      SpeedHint.decrease => ' · try slowing down ⚠️',
+      null => '',
+    };
     return 'scanned $scanned · new ${provider.totalScanned} · dupes ${provider.duplicatesSkipped} · '
-        '${rate.toStringAsFixed(1)}/s · ${formatBytes(bytesRate.round())}/s';
+        '${rate.toStringAsFixed(1)}/s · ${formatBytes(bytesRate.round())}/s$senderPart$hintPart';
   }
 
   Widget _buildHud(BuildContext context, ScannerProvider provider, SettingsProvider settings) {

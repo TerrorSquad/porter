@@ -19,7 +19,7 @@ const _kSelectedCameraIdKey = 'porter.selectedCameraId';
 class SettingsProvider extends ChangeNotifier {
   String? _outputDirectory;
   bool _autoSave = false;
-  CameraResolutionPreset _cameraResolution = CameraResolutionPreset.p720;
+  CameraResolutionPreset _cameraResolution = CameraResolutionPreset.p1080;
   CameraFpsPreset _cameraFps = CameraFpsPreset.auto;
   String _relayUrl = '';
   String? _selectedCameraId;

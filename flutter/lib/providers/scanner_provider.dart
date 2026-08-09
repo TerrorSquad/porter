@@ -6,6 +6,11 @@ import '../models/transfer.dart';
 import '../services/assembler_worker.dart';
 import '../services/relay_service.dart';
 
+/// Suggests whether the sender's display interval has headroom to speed up
+/// or is already outpacing what the receiver can reliably catch. See
+/// [ScannerProvider.speedHint].
+enum SpeedHint { increase, decrease }
+
 class ScannerProvider extends ChangeNotifier {
   static const _rateWindow = Duration(seconds: 3);
 
@@ -16,6 +21,13 @@ class ScannerProvider extends ChangeNotifier {
   final Map<String, Transfer> _transfers = {};
   final List<DateTime> _recentScans = [];
   final List<(DateTime, int)> _recentBytes = [];
+
+  /// Arrival times of recent *new* (non-duplicate) chunks only — the basis
+  /// for [estimatedSenderIntervalMs]. Duplicate scans of an already-seen
+  /// chunk say nothing about how fast the sender is advancing, so they're
+  /// deliberately excluded (unlike [_recentScans], which counts everything).
+  final List<DateTime> _recentNewChunks = [];
+  static const _senderIntervalSampleSize = 8;
 
   int totalScanned = 0;
   int duplicatesSkipped = 0;
@@ -64,6 +76,58 @@ class ScannerProvider extends ChangeNotifier {
     _recentBytes.removeWhere((e) => now.difference(e.$1) > _rateWindow);
     final total = _recentBytes.fold<int>(0, (sum, e) => sum + e.$2);
     return total / _rateWindow.inSeconds;
+  }
+
+  /// Estimated time between the sender's QR frame changes, in milliseconds —
+  /// the median gap between recent *new*-chunk arrivals, distinct from
+  /// [scansPerSecond] (which is the receiver's raw decode-attempt rate,
+  /// duplicates included and dominated by how many times each displayed
+  /// frame gets re-decoded before the sender advances). Null until enough
+  /// distinct chunks have arrived to estimate from, or if the last sample is
+  /// stale (sender stalled/finished/gap-filling out of order).
+  ///
+  /// ponytail: a plain median over the last few gaps, not a real clock-sync
+  /// or outlier-robust estimator — good enough to eyeball "sender could
+  /// probably go faster/slower", not precise pacing telemetry. Revisit if
+  /// gap-filling/out-of-order scanning makes this noisy in practice.
+  int? get estimatedSenderIntervalMs {
+    if (_recentNewChunks.length < 3) return null;
+    final last = _recentNewChunks.last;
+    if (DateTime.now().difference(last) > const Duration(seconds: 3)) return null;
+
+    final gaps = <int>[];
+    for (var i = 1; i < _recentNewChunks.length; i++) {
+      gaps.add(_recentNewChunks[i].difference(_recentNewChunks[i - 1]).inMilliseconds);
+    }
+    gaps.sort();
+    return gaps[gaps.length ~/ 2];
+  }
+
+  /// A hint for whether the sender's display interval has room to speed up
+  /// or should slow down, based on how many decode *attempts* the receiver
+  /// spends per displayed frame (attempts-in-window ÷ new-chunks-in-window).
+  /// Null when there isn't enough recent signal to say anything ([lastError]
+  /// on `estimatedSenderIntervalMs` applies here too).
+  ///
+  /// ponytail: fixed thresholds picked from one real session's numbers (1080p
+  /// Brio, ~67% decode success, ~2-3 attempts/frame felt comfortable) — not
+  /// tuned per-device/lighting. Good enough as a nudge, not a guarantee; the
+  /// user can always just watch for missing chunks instead.
+  SpeedHint? get speedHint {
+    final intervalMs = estimatedSenderIntervalMs;
+    if (intervalMs == null) return null;
+
+    final now = DateTime.now();
+    final attemptsInWindow =
+        _recentScans.where((t) => now.difference(t) <= _rateWindow).length;
+    final newChunksInWindow =
+        _recentNewChunks.where((t) => now.difference(t) <= _rateWindow).length;
+    if (newChunksInWindow == 0) return null;
+
+    final attemptsPerFrame = attemptsInWindow / newChunksInWindow;
+    if (attemptsPerFrame >= 4) return SpeedHint.increase;
+    if (attemptsPerFrame <= 1.5) return SpeedHint.decrease;
+    return null;
   }
 
   void ingestQR(String raw, {String? relayUrl, String? outputDirectory}) {
@@ -123,6 +187,10 @@ class ScannerProvider extends ChangeNotifier {
       case ScanCountedEvent(:final isNew):
         if (isNew) {
           totalScanned++;
+          _recentNewChunks.add(DateTime.now());
+          if (_recentNewChunks.length > _senderIntervalSampleSize) {
+            _recentNewChunks.removeAt(0);
+          }
         } else {
           duplicatesSkipped++;
         }
@@ -161,6 +229,7 @@ class ScannerProvider extends ChangeNotifier {
     relayLastOk = null;
     _recentScans.clear();
     _recentBytes.clear();
+    _recentNewChunks.clear();
     notifyListeners();
   }
 
