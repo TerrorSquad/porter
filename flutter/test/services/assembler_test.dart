@@ -251,11 +251,12 @@ void main() {
     });
 
     group('hydrate', () {
-      test('populates transfers and credits seenIndices without re-parsing', () {
+      test('populates transfers and credits seenIndices cheaply, without reading bytes', () async {
         final progressed = <Transfer>[];
+        var readChunkCalls = 0;
         final assembler = Assembler(onProgress: progressed.add);
 
-        assembler.hydrate([
+        await assembler.hydrate([
           HydratedTransfer(
             id: 'AB',
             mode: 'T',
@@ -264,7 +265,11 @@ void main() {
             fountainFileSize: null,
             checksum: null,
             transferDirPath: '/tmp/AB',
-            chunks: {1: utf8.encode('Hi'), 3: utf8.encode('Yo')},
+            seenIndices: {1, 3},
+            readChunk: (i) async {
+              readChunkCalls++;
+              return utf8.encode(i == 1 ? 'Hi' : 'Yo');
+            },
           ),
         ]);
 
@@ -273,15 +278,17 @@ void main() {
         expect(t.total, 3);
         expect(t.transferDirPath, '/tmp/AB');
         expect(progressed.single.id, 'AB');
+        // Incomplete (2 of 3) — hydrate must not have read any chunk bytes.
+        expect(readChunkCalls, 0);
       });
 
-      test('triggers completion when the hydrated set is already complete', () {
+      test('triggers completion when the hydrated set is already complete', () async {
         Transfer? completed;
         final assembler = Assembler(onComplete: (t) => completed = t);
 
         final content = utf8.encode('Hello');
         final checksum = sha256.convert(content).toString();
-        assembler.hydrate([
+        await assembler.hydrate([
           HydratedTransfer(
             id: 'AB',
             mode: 'T',
@@ -290,7 +297,8 @@ void main() {
             fountainFileSize: null,
             checksum: checksum,
             transferDirPath: '/tmp/AB',
-            chunks: {1: content},
+            seenIndices: {1},
+            readChunk: (i) async => content,
           ),
         ]);
 

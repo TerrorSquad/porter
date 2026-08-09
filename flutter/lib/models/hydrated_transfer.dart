@@ -9,10 +9,19 @@ class HydratedTransfer {
   final String? checksum;
   final String transferDirPath;
 
-  /// Recovered chunk bytes, keyed by 1-based index — read directly from
-  /// `chunks/chunk_NNNNNN.bin`, the source of truth (never metadata.json,
-  /// which may lag behind by up to the debounce interval).
-  final Map<int, List<int>> chunks;
+  /// Indices (1-based) with an existing `chunks/chunk_NNNNNN.bin` file — the
+  /// source of truth for what's been received (never metadata.json, which
+  /// may lag behind by up to the debounce interval). Deliberately just the
+  /// index set, not the bytes: a resumed transfer can have tens of thousands
+  /// of chunks, and reading them all into memory eagerly at startup — for
+  /// every resumable transfer at once — is what caused the isolate to crash
+  /// in practice. Bytes are read lazily, only when actually needed (final
+  /// assembly), via [readChunk].
+  final Set<int> seenIndices;
+
+  /// Reads chunk [index]'s bytes from disk on demand. Only called once per
+  /// index, at assembly time.
+  final Future<List<int>> Function(int index) readChunk;
 
   const HydratedTransfer({
     required this.id,
@@ -22,6 +31,7 @@ class HydratedTransfer {
     required this.fountainFileSize,
     required this.checksum,
     required this.transferDirPath,
-    required this.chunks,
+    required this.seenIndices,
+    required this.readChunk,
   });
 }

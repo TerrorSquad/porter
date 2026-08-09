@@ -22,6 +22,15 @@ class Transfer {
 
   Map<int, List<int>> chunks = {}; // index -> bytes
   Set<int> seenIndices = {};
+
+  /// Reads a hydrated chunk's bytes from disk on demand. Set only for a
+  /// transfer resumed via [Assembler.hydrate], where [chunks] is
+  /// intentionally left unpopulated for already-seen indices to avoid
+  /// reading potentially tens of thousands of chunk files into memory
+  /// eagerly at startup. Live-ingested chunks never need this — they're
+  /// already in [chunks].
+  Future<List<int>> Function(int index)? chunkReader;
+
   String? checksum;
   List<int>? assembled;
   bool? verified;
@@ -89,6 +98,11 @@ class Transfer {
       receivedBytes += data.length;
     }
   }
+
+  /// Marks [index] as seen without loading its bytes — used by
+  /// [Assembler.hydrate] to credit disk-scanned chunks cheaply. The bytes are
+  /// read lazily via [chunkReader] only if/when this transfer is assembled.
+  void markSeen(int index) => seenIndices.add(index);
 
   /// Updates every display-relevant field from a [ProgressSnapshot] posted
   /// by the worker isolate. Never touches [chunks]/[assembled] — this

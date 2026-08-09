@@ -166,15 +166,25 @@ void _workerMain((RootIsolateToken, SendPort) args) {
         unawaited(w.flush());
       }
     } else if (message is _HydrateFromDisk) {
+      // Also adopt this as the working outputDirectory: a transfer that
+      // turns out to already be complete gets assembled/written during
+      // hydrate() below, and that write must use this directory directly
+      // rather than falling through to path_provider's getDownloadsDirectory
+      // (a platform-channel call) — doing a platform-channel round trip
+      // synchronously interleaved with a large hydration scan is what
+      // crashed the isolate in practice.
+      outputDirectory = message.outputDirectory;
+
       // Assembler.hydrate fires onProgress per transfer, which already posts
       // a ProgressSnapshotEvent — no separate event type needed here. The
       // `hydrating` flag lets the main isolate tell hydration-sourced
       // snapshots apart from live-scan ones.
-      ChunkStorage.hydrateAll(outputDirectory: message.outputDirectory).then((hydrated) {
+      ChunkStorage.hydrateAll(outputDirectory: message.outputDirectory).then((hydrated) async {
         hydrating = true;
-        assembler.hydrate(hydrated);
+        await assembler.hydrate(hydrated);
         hydrating = false;
       }).catchError((Object e) {
+        hydrating = false;
         mainSendPort.send(PersistErrorEvent('', 'Failed to hydrate from disk: $e'));
       });
     }

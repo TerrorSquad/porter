@@ -69,7 +69,7 @@ void main() {
   });
 
   group('ChunkStorage.hydrateAll', () {
-    test('rebuilds chunks from .bin filenames, trusting them over metadata.json', () async {
+    test('rebuilds the index set from .bin filenames, trusting them over metadata.json', () async {
       final t = Transfer(id: 'AB')
         ..total = 3
         ..mode = 'T';
@@ -86,9 +86,10 @@ void main() {
       expect(h.id, 'AB');
       expect(h.mode, 'T');
       expect(h.total, 3);
-      expect(h.chunks.keys.toSet(), {1, 3});
-      expect(h.chunks[1], [1]);
-      expect(h.chunks[3], [3]);
+      expect(h.seenIndices, {1, 3});
+      // Bytes aren't read eagerly, but readChunk fetches them on demand.
+      expect(await h.readChunk(1), [1]);
+      expect(await h.readChunk(3), [3]);
     });
 
     test('ignores non-matching filenames in chunks/', () async {
@@ -98,7 +99,7 @@ void main() {
 
       final hydrated = await ChunkStorage.hydrateAll(outputDirectory: tmpDir.path);
 
-      expect(hydrated.single.chunks.keys.toSet(), {1});
+      expect(hydrated.single.seenIndices, {1});
     });
 
     test('yields a valid hydration when metadata.json is missing or corrupt', () async {
@@ -106,12 +107,12 @@ void main() {
       File('${chunksDir.path}/chunk_000001.bin').writeAsBytesSync([1]);
 
       final hydrated = await ChunkStorage.hydrateAll(outputDirectory: tmpDir.path);
-      expect(hydrated.single.chunks.keys, {1});
+      expect(hydrated.single.seenIndices, {1});
       expect(hydrated.single.total, 0); // unknown without metadata.json
 
       File('${tmpDir.path}/AB/metadata.json').writeAsStringSync('{not valid json');
       final hydratedWithCorruptMeta = await ChunkStorage.hydrateAll(outputDirectory: tmpDir.path);
-      expect(hydratedWithCorruptMeta.single.chunks.keys, {1});
+      expect(hydratedWithCorruptMeta.single.seenIndices, {1});
     });
 
     test('skips directories with no chunks/ subfolder, returns empty for an empty base', () async {
@@ -139,6 +140,32 @@ void main() {
       final hydrated = await ChunkStorage.hydrateAll(outputDirectory: tmpDir.path);
 
       expect(hydrated, isEmpty);
+    });
+
+    test('scans thousands of chunks without reading their bytes', () async {
+      // Regression test: hydrateAll used to eagerly read every chunk's bytes
+      // into memory during the scan, which crashed the app on a real
+      // ~14,000-chunk transfer directory. Only filenames should be touched
+      // here — content bytes read on demand via readChunk.
+      final chunksDir = Directory('${tmpDir.path}/AB/chunks')..createSync(recursive: true);
+      const count = 3000;
+      // Write oversized placeholder content so an eager full-content read
+      // would be slow/memory-heavy enough to notice if the regression
+      // reappears, while a filename-only scan stays fast regardless.
+      final bigContent = List<int>.filled(64 * 1024, 7);
+      for (var i = 1; i <= count; i++) {
+        File('${chunksDir.path}/chunk_${i.toString().padLeft(6, '0')}.bin')
+            .writeAsBytesSync(bigContent);
+      }
+
+      final stopwatch = Stopwatch()..start();
+      final hydrated = await ChunkStorage.hydrateAll(outputDirectory: tmpDir.path);
+      stopwatch.stop();
+
+      expect(hydrated.single.seenIndices.length, count);
+      // A pure filename scan of 3000 entries should be well under a second;
+      // reading 3000 * 64KB eagerly would be markedly slower.
+      expect(stopwatch.elapsedMilliseconds, lessThan(3000));
     });
   });
 }

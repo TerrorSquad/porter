@@ -100,9 +100,13 @@ class ChunkStorage {
   }
 
   /// Scans [outputDirectory] for incomplete transfer directories (those with
-  /// a `chunks/` folder but no already-recovered/failed and no final output
-  /// file) and rebuilds each one's chunk bytes from disk, so a killed/
-  /// restarted app can resume without rescanning already-received chunks.
+  /// a `chunks/` folder but no final output file) and rebuilds each one's
+  /// *index set* from disk, so a killed/restarted app can resume without
+  /// rescanning already-received chunks. Deliberately cheap: only reads
+  /// filenames, not chunk bytes (see [HydratedTransfer.readChunk]) — a
+  /// resumed transfer can have tens of thousands of chunks, and reading them
+  /// all into memory eagerly for every resumable transfer at once is
+  /// expensive enough to destabilize the isolate.
   ///
   /// Trusts only `chunk_NNNNNN.bin` filenames as the source of truth for
   /// what's been received — never metadata.json's seenIndices, which may lag
@@ -137,15 +141,19 @@ class ChunkStorage {
         .any((e) => e is File && e.uri.pathSegments.last.startsWith('$id.'));
     if (hasFinalOutput) return null;
 
-    final chunks = <int, List<int>>{};
+    // Only the index set is read here — not the bytes. A resumed transfer
+    // can have tens of thousands of chunk files; reading them all into
+    // memory eagerly, for every resumable transfer at once, is expensive
+    // enough to destabilize the isolate. Bytes are read lazily via
+    // readChunk, only for a transfer that's actually assembled.
+    final seenIndices = <int>{};
     await for (final entry in chunksDir.list()) {
       if (entry is! File) continue;
       final match = _chunkFilenameRegExp.firstMatch(entry.uri.pathSegments.last);
       if (match == null) continue;
-      final index = int.parse(match.group(1)!);
-      chunks[index] = await entry.readAsBytes();
+      seenIndices.add(int.parse(match.group(1)!));
     }
-    if (chunks.isEmpty) return null;
+    if (seenIndices.isEmpty) return null;
 
     String mode = 'T';
     String encoding = 'sequential';
@@ -176,7 +184,8 @@ class ChunkStorage {
       fountainFileSize: fountainFileSize,
       checksum: checksum,
       transferDirPath: transferDir.path,
-      chunks: chunks,
+      seenIndices: seenIndices,
+      readChunk: (index) => File('${chunksDir.path}/${_chunkFilename(index)}').readAsBytes(),
     );
   }
 }

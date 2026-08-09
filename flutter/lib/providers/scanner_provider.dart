@@ -194,6 +194,7 @@ class ScannerProvider extends ChangeNotifier {
   /// output directory is known (see [SettingsProvider.ready]).
   Future<void> hydrateFromDisk(String? outputDirectory) async {
     await ready;
+    _currentOutputDirectory = outputDirectory;
     _worker?.hydrateFromDisk(outputDirectory);
   }
 

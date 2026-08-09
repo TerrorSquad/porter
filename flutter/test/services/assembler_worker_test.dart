@@ -77,6 +77,41 @@ void main() {
       expect(completed.snapshot.checksum, expectedSha);
     });
 
+    test('hydrateFromDisk without a prior setOutputDirectory call completes an '
+        'already-finished transfer without a platform-channel round trip', () async {
+      // Regression test: hydrateFromDisk is the very first call ScanningScreen
+      // makes (before any ingestQR/setOutputDirectory). If a hydrated
+      // transfer turns out to already be complete, its completion write used
+      // to fall through to FileHandler.resolveOutputDirectory's
+      // getDownloadsDirectory() platform channel — a call from inside the
+      // worker isolate mid-hydration that crashed the isolate outright on a
+      // real multi-thousand-chunk directory. hydrateFromDisk must adopt its
+      // outputDirectory as the worker's working directory up front.
+      final t0 = File('${tmpDir.path}/AB/chunks/chunk_000001.bin')
+        ..createSync(recursive: true);
+      await t0.writeAsBytes(utf8.encode('Hello,'));
+      await File('${tmpDir.path}/AB/chunks/chunk_000002.bin').writeAsBytes(utf8.encode('World'));
+      await File('${tmpDir.path}/AB/metadata.json').writeAsString(
+        jsonEncode({'mode': 'T', 'encoding': 'sequential', 'total': 2}),
+      );
+
+      final events = <WorkerEvent>[];
+      worker = await AssemblerWorker.spawn(events.add);
+
+      // No setOutputDirectory call here — hydrateFromDisk must work standalone.
+      worker!.hydrateFromDisk(tmpDir.path);
+
+      await waitFor(() => events.any((e) => e is TransferCompletedEvent));
+
+      final completed = events.whereType<TransferCompletedEvent>().single;
+      expect(completed.snapshot.id, 'AB');
+      expect(completed.snapshot.isComplete, true);
+      expect(utf8.decode(completed.assembled!), 'Hello,World');
+
+      final finalFile = File('${tmpDir.path}/AB/AB.txt');
+      expect(await finalFile.exists(), true);
+    });
+
     test('reset(id) drops in-worker state for that transfer only', () async {
       final events = <WorkerEvent>[];
       worker = await AssemblerWorker.spawn(events.add);
