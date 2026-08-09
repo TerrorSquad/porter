@@ -110,10 +110,21 @@ const int kDefaultMaxEliminationMissingCount = 500;
 /// tens of MB regardless of K, instead of growing to K * blockSize.
 const int kDefaultMaxCachedBlocks = 2048;
 
-/// Pending XOR buffers kept in RAM when a [SymbolSpill] is supplied. At a
-/// ~1.6 KB block this caps the pending pool near 32 MB regardless of K, so a
-/// 1 GB transfer stops being an OOM (projected ~2.6 GB fully resident).
-const int kDefaultMaxResidentSymbols = 20000;
+/// Pending XOR buffers kept in RAM when a [SymbolSpill] is supplied.
+///
+/// Sized so a realistic transfer never spills at all: at a ~1.6 KB block this
+/// is ~240 MB, which comfortably holds the ~90 MB pool of a 115 MB transfer.
+/// The spill exists for the genuinely huge case (a 1 GB file projects to
+/// ~2.6 GB fully resident, which OOMs a phone), not as a routine path.
+///
+/// An earlier 20000 (~32 MB) was far too aggressive. Spilling is cheap while
+/// symbols only arrive, but during the decode avalanche each peel cascades
+/// through many pending symbols at once — with most of them evicted that
+/// becomes a synchronous disk read per step, and the decoder burns CPU making
+/// almost no progress. Observed at K=70965: 26745 blocks recovered, 55887
+/// symbols pending, ~36000 of them spilled, 52% CPU and no writes for
+/// minutes.
+const int kDefaultMaxResidentSymbols = 150000;
 
 /// Reads back a previously-recovered block's bytes, or null if unavailable.
 /// Lets the decoder evict recovered blocks from RAM (they are already
