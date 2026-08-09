@@ -82,36 +82,7 @@ individual frame matters, so a persistently missed one costs nothing.
 
 ::u-page-section
 ---
-headline: 02 — The contract
----
-#title
-Two implementations, derived bit for bit
-
-#description
-A Rust sender and a Dart receiver independently compute which source blocks each
-fountain symbol carries. They never exchange that mapping — they recompute it
-from `seq`. Drift by one bit and transfers fail to decode, silently.
-
-#default
-```text
-state = seq XOR 0x9e3779b9
-next():
-  state ^= state << 13
-  state ^= state >> 17
-  state ^= state << 5
-  return state
-```
-
-So the degree table is specified in integers only, `i * (i - 1)` is computed in
-64-bit because it overflows `u32` past K≈65536, and agreement is checked against
-shared fixtures rather than by trusting two codebases to stay in step.
-
-:u-button{to="/wire-format" variant="link" trailing-icon="i-lucide-arrow-right" label="Read the wire format"}
-::
-
-::u-page-section
----
-headline: 03 — What it costs you
+headline: 02 — What it costs you
 ---
 #title
 One binary on the sending machine
@@ -137,7 +108,7 @@ toolchain were deleted once `join` was ported.
 
 ::u-page-section
 ---
-headline: 04 — Offline, and provably so
+headline: 03 — Offline, and provably so
 title: What Porter does not do
 description: The security story is short, which is the point. There is no account, no server, no telemetry, and by default no trace left on disk.
 features:
@@ -164,43 +135,31 @@ features:
 
 ::u-page-section
 ---
-headline: 05 — Where it stops
----
-#title
-Honest limits
-
-#description
-QR codes are a slow, lossy, line-of-sight link, and no amount of coding makes
-them otherwise. Throughput depends on lighting, terminal size and how steady
-the hand holding the camera is.
-
-#default
-A 109 MB file is roughly 26,000 chunks. That is a real transfer that has been
-run end to end — it is also a long time spent holding a phone at a screen, and
-`porter serve` exists precisely for when the two machines can see each other
-over a network after all.
-
-Porter is for the case where they genuinely cannot: a machine with no NIC, an
-isolated network, a device you will not plug anything into.
-::
-
-::u-page-section
----
+headline: 04 — Where it stops
 links:
   - label: Read the docs
     to: /docs/getting-started/introduction
     size: xl
     trailingIcon: i-lucide-arrow-right
-  - label: Browse the decisions
-    to: /design
+  - label: View on GitHub
+    to: https://github.com/TerrorSquad/porter
+    target: _blank
     size: xl
     color: neutral
     variant: subtle
+    icon: i-simple-icons-github
 ---
 #title
-Free and ISC licensed
+Honest limits, and an ISC licence
 
 #description
-A hobby project in daily use. Clone it, build the sender, and move a file across
-a gap that nothing else crosses.
+QR is a slow, lossy, line-of-sight link, and no amount of coding changes that.
+A 109 MB file is roughly 26,000 chunks — a real transfer that has been run end
+to end, and also a long time holding a phone at a screen.
+
+#default
+`porter serve` exists for when the two machines turn out to see each other over
+a network after all. Porter is for the case where they genuinely cannot: a
+machine with no NIC, an isolated network, a device you will not plug anything
+into.
 ::
