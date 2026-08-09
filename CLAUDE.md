@@ -10,9 +10,15 @@ reassembles them. No network, no cloud — the QR codes are the wire.
 
 ## Package manager
 
-Root and `nodejs/` use **pnpm** (`pnpm-workspace.yaml`, `pnpm-lock.yaml`).
-Never `npm` or `yarn`. `rust-sender/` uses `cargo`. Tool versions pinned
-in `mise.toml`.
+`nodejs/` uses **pnpm** (`pnpm-workspace.yaml`, `pnpm-lock.yaml`). Never
+`npm` or `yarn`. `rust-sender/` uses `cargo`. Tool versions pinned in
+`mise.toml`.
+
+All JS tooling — `package.json`, prettier, eslint, markdownlint — lives in
+`nodejs/`, not the root. Prettier and markdownlint still cover the whole
+repo via `../` globs in their configs; run them with `mise run node-lint`
+or `pnpm --dir nodejs exec <tool>`. The root keeps no `package.json`;
+release-please tracks `version.txt` (`release-type: simple`).
 
 ## Sender (`rust-sender/`)
 
@@ -22,15 +28,15 @@ Node.js runtime needed. See `docs/adr/0004-*.md` for why it replaced the
 TypeScript sender. `cargo test` / `cargo clippy --all-targets` / `cargo
 fmt --check` from `rust-sender/`; `mise run rust-*` tasks from the root.
 
-## Sender, legacy (`nodejs/`)
+## Sender, legacy (`nodejs/`) — DEPRECATED
 
 TypeScript CLI (`porter.ts`), built with Rollup to a standalone `.mjs`.
-`porter serve` and `porter join` (multi-part joiner) stay here
-indefinitely — not on the Rust replacement path (`porter join` isn't
-ported at all yet). The QR-display/slideshow sender code here is dead
-once the Rust sender is the daily driver, kept only until `porter
-serve`/`porter join` are addressed separately. `pnpm test` (node's
-`--test` runner) / `pnpm run build` from `nodejs/`.
+Deprecated and not covered by CI. `porter serve` **is** ported (see
+`rust-sender/src/serve.rs`); `porter join` (`joiner.ts`, 178 lines) is the
+only subcommand with no Rust equivalent and the only reason this package
+still exists. The sender path prints a deprecation warning at startup.
+Don't build new work here — port to `rust-sender/` instead. `pnpm test`
+(node's `--test` runner) from `nodejs/`.
 
 ## Receiver (`flutter/`)
 

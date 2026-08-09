@@ -9,11 +9,11 @@ porter-sender myfile.txt
 
 ## 📦 Components
 
-| Component                                   | Role                                                                              | Status                                                                                             |
-| ------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **[`rust-sender/`](rust-sender/README.md)** | Terminal QR-slideshow sender + `porter serve` HTTP receiver, single static binary | Active — the primary sender going forward                                                          |
-| **[`flutter/`](flutter/README.md)**         | Receiver app (Android + macOS), scans QR frames and reassembles the file          | Active — the real receiver, in daily use                                                           |
-| **[`nodejs/`](nodejs/README.md)**           | Original TypeScript sender + `porter serve`/`porter join`                         | `serve`/`join` stay here indefinitely; the QR-slideshow sender is being replaced by `rust-sender/` |
+| Component                                   | Role                                                                              | Status                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **[`rust-sender/`](rust-sender/README.md)** | Terminal QR-slideshow sender + `porter serve` HTTP receiver, single static binary | Active — the primary sender going forward                                                                 |
+| **[`flutter/`](flutter/README.md)**         | Receiver app (Android + macOS), scans QR frames and reassembles the file          | Active — the real receiver, in daily use                                                                  |
+| **[`nodejs/`](nodejs/README.md)**           | Original TypeScript sender — **deprecated**                                       | Deprecated, not in CI. Only `porter join` is still current; `serve` and the sender live in `rust-sender/` |
 
 Why the sender moved to Rust: a single static binary needs no Node.js
 runtime on the sending machine, which matters for an air-gapped tool. See
@@ -73,7 +73,7 @@ Offline Computer              Phone / Receiver
 │   └── src/                # cli, chunker, fountain, renderer, tui, serve
 ├── flutter/                # Receiver app (Android/macOS)
 │   └── lib/                # services (assembler, fountain decoder), providers, screens
-├── nodejs/                 # Original TypeScript sender; serve/join stay here
+├── nodejs/                 # DEPRECATED TypeScript sender; only join is current
 │   └── src/lib/            # chunker, renderer, receiver, joiner, fountain
 ├── docs/adr/                # Architecture decision records
 ├── mise.toml
@@ -103,7 +103,8 @@ mise run rust-build     # cargo build --release
 mise run rust-test       # cargo test
 mise run rust-check      # cargo clippy + cargo fmt --check
 mise run flutter-build   # flutter build macos --release
-mise run node-build      # pnpm run build (nodejs/)
+mise run node-build      # pnpm run build (nodejs/, deprecated)
+mise run node-lint       # prettier + eslint + markdownlint (whole repo)
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites and conventions,

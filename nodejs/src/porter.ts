@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+// DEPRECATED. The sender and `porter serve` were superseded by rust-sender/
+// (single static binary, no Node runtime -- see ADR-0004). `porter join` is
+// the only subcommand here without a Rust equivalent and the only one still
+// current; everything else is kept for reference and is not covered by CI.
+
 import fs from 'fs';
 import path from 'path';
 import tty from 'tty';
@@ -55,6 +60,12 @@ if (subcommand === 'serve') {
   const { runJoin } = await import('./lib/joiner.js');
   runJoin(args.slice(1));
 } else {
+  // ponytail: warn, don't block -- the sender still works and someone may be
+  // relying on it. Drop the whole branch once join is ported (ADR-0004).
+  console.error(
+    'Warning: the TypeScript sender is deprecated and unmaintained.\n' +
+      '         Use the Rust sender (rust-sender/, `porter-sender`) instead.\n',
+  );
   runSender();
 }
 

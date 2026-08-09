@@ -3,13 +3,13 @@ name: rust-ci
 on:
   pull_request:
     paths:
-      - 'rust-sender/**'
-      - '.github/workflows/rust-ci.yml'
+      - "rust-sender/**"
+      - ".github/workflows/rust-ci.yml"
   push:
     branches: [main]
     paths:
-      - 'rust-sender/**'
-      - '.github/workflows/rust-ci.yml'
+      - "rust-sender/**"
+      - ".github/workflows/rust-ci.yml"
 
 concurrency:
   group: rust-ci-${{ github.ref }}

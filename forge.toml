@@ -2,27 +2,33 @@
 # Review and adjust as needed.
 #
 # The JS toolchain lives in nodejs/ (deprecated package, see ADR-0004), so
-# every node tool runs from there via `pnpm --dir nodejs exec`. The tools
-# themselves still cover the whole repo -- prettier and markdownlint reach
-# up past nodejs/ by their own config globs.
+# every node tool runs from there via `pnpm --dir nodejs exec`. Prettier and
+# markdownlint still cover the whole repo: their configs use ../ globs, which
+# only resolve correctly with nodejs/ as the working directory.
+#
+# pass_files = false everywhere: the hook would otherwise hand these tools
+# repo-root-relative paths, which do not resolve once the tool has chdir'd
+# into nodejs/. Each tool instead runs whole-project off its own config.
 
 [hooks.pre-commit]
 enabled = true
 
 [hooks.pre-commit.tools.eslint]
 command = "pnpm"
-args = ["--dir", "nodejs", "exec", "eslint", "--fix", "--cache", "--no-warn-ignored"]
+args = ["--dir", "nodejs", "exec", "eslint", "--fix", "--cache", "--no-warn-ignored", "."]
 type = "node"
 group = "lint"
 extensions = [".js", ".jsx", ".ts", ".tsx", ".vue", ".mjs", ".cjs"]
+pass_files = false
 restage = true
 
 [hooks.pre-commit.tools.prettier]
 command = "pnpm"
-args = ["--dir", "nodejs", "exec", "prettier", "--write", "--ignore-unknown", "--cache"]
+args = ["--dir", "nodejs", "exec", "prettier", "--write", "--ignore-unknown", "--cache", ".."]
 type = "node"
 group = "format"
 extensions = [".js", ".jsx", ".ts", ".tsx", ".vue", ".mjs", ".cjs", ".json", ".md", ".yml", ".yaml", ".css", ".scss"]
+pass_files = false
 restage = true
 
 # [hooks.pre-commit.tools.typescript]
@@ -39,3 +45,4 @@ args = ["--dir", "nodejs", "exec", "markdownlint-cli2"]
 type = "node"
 group = "lint"
 extensions = [".md"]
+pass_files = false

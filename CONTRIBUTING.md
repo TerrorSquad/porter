@@ -5,15 +5,16 @@
 - Rust (stable) for the sender — `rust-sender/`.
 - Flutter (stable channel) for the receiver app.
 - Node + pnpm (versions pinned in `mise.toml` — `mise install` if you use
-  mise) for `nodejs/` (`porter serve`/`porter join`, kept indefinitely;
-  see `docs/adr/0004-*.md`).
+  mise) for `nodejs/` (**deprecated**; only `porter join` is still current,
+  see `docs/adr/0004-*.md`) and for the repo-wide JS tooling (prettier,
+  eslint, markdownlint), which all lives in `nodejs/`.
 
 ## Getting started
 
 ```bash
 cd rust-sender && cargo build --release
 cd flutter && flutter pub get
-pnpm install               # root + nodejs/ workspace deps
+pnpm install               # nodejs/ workspace deps + repo JS tooling
 ```
 
 Sending: `mise run rust-send <file>` or
@@ -32,9 +33,11 @@ cargo fmt --check
 flutter test
 flutter analyze
 
-# nodejs/ (only if you touched serve/join)
-pnpm test
-pnpm run build
+# nodejs/ (deprecated — only if you touched join)
+cd nodejs && pnpm test
+
+# lint/format the whole repo (tooling lives in nodejs/)
+mise run node-lint
 ```
 
 Or via `mise run rust-check` / `mise run rust-test` from the root. No

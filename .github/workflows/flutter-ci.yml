@@ -3,13 +3,13 @@ name: flutter-ci
 on:
   pull_request:
     paths:
-      - 'flutter/**'
-      - '.github/workflows/flutter-ci.yml'
+      - "flutter/**"
+      - ".github/workflows/flutter-ci.yml"
   push:
     branches: [main]
     paths:
-      - 'flutter/**'
-      - '.github/workflows/flutter-ci.yml'
+      - "flutter/**"
+      - ".github/workflows/flutter-ci.yml"
 
 # A force-push or rapid follow-up commit makes older runs irrelevant.
 concurrency:

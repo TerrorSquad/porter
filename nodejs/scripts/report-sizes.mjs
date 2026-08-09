@@ -4,8 +4,9 @@ import zlib from 'node:zlib';
 
 const distDir = path.resolve('dist');
 const targets = fs.existsSync(distDir)
-  ? fs.readdirSync(distDir)
-      .filter(fileName => fileName.endsWith('.mjs'))
+  ? fs
+      .readdirSync(distDir)
+      .filter((fileName) => fileName.endsWith('.mjs'))
       .sort()
   : [];
 
@@ -40,9 +41,7 @@ function readSizeReport(fileName) {
   };
 }
 
-const reports = targets
-  .map(readSizeReport)
-  .filter(Boolean);
+const reports = targets.map(readSizeReport).filter(Boolean);
 
 if (reports.length === 0) {
   console.log('No build outputs found in dist/.');
@@ -52,19 +51,22 @@ if (reports.length === 0) {
 console.log('Porter build sizes:');
 for (const report of reports) {
   console.log(
-    `  ${report.fileName.padEnd(24)} ${String(report.bytes).padStart(8)} bytes  ${formatBytes(report.bytes).padStart(8)}  gzip ${formatBytes(report.gzipBytes).padStart(8)}`
+    `  ${report.fileName.padEnd(24)} ${String(report.bytes).padStart(8)} bytes  ${formatBytes(report.bytes).padStart(8)}  gzip ${formatBytes(report.gzipBytes).padStart(8)}`,
   );
 }
 
 const smallestReport = reports.reduce((smallest, current) =>
-  current.bytes < smallest.bytes ? current : smallest
+  current.bytes < smallest.bytes ? current : smallest,
 );
 const largestReport = reports.reduce((largest, current) =>
-  current.bytes > largest.bytes ? current : largest
+  current.bytes > largest.bytes ? current : largest,
 );
 
 if (smallestReport.fileName !== largestReport.fileName) {
   const saved = largestReport.bytes - smallestReport.bytes;
-  const ratio = largestReport.bytes > 0 ? (1 - smallestReport.bytes / largestReport.bytes) * 100 : 0;
-  console.log(`  ${`delta ${smallestReport.fileName}`.padEnd(24)} ${String(saved).padStart(8)} bytes  ${ratio.toFixed(1)}% smaller than ${largestReport.fileName}`);
+  const ratio =
+    largestReport.bytes > 0 ? (1 - smallestReport.bytes / largestReport.bytes) * 100 : 0;
+  console.log(
+    `  ${`delta ${smallestReport.fileName}`.padEnd(24)} ${String(saved).padStart(8)} bytes  ${ratio.toFixed(1)}% smaller than ${largestReport.fileName}`,
+  );
 }

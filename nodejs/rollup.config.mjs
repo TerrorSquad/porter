@@ -7,13 +7,13 @@ import typescript from '@rollup/plugin-typescript';
 
 const externalDeps = (process.env.EXTERNAL_DEPS ?? '')
   .split(',')
-  .map(entry => entry.trim())
+  .map((entry) => entry.trim())
   .filter(Boolean);
 const outputFile = process.env.OUTPUT_FILE ?? 'dist/porter.mjs';
 
 const externalModules = new Set([
   ...builtinModules,
-  ...builtinModules.map(moduleName => `node:${moduleName}`),
+  ...builtinModules.map((moduleName) => `node:${moduleName}`),
   ...externalDeps,
 ]);
 
@@ -22,7 +22,7 @@ function isExternal(id) {
     return true;
   }
 
-  return externalDeps.some(dependency => id === dependency || id.startsWith(`${dependency}/`));
+  return externalDeps.some((dependency) => id === dependency || id.startsWith(`${dependency}/`));
 }
 
 export default {

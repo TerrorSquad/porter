@@ -1,4 +1,17 @@
-# Porter — Node.js Implementation
+# Porter — Node.js Implementation (deprecated)
+
+> [!WARNING]
+> **This package is deprecated.** The sender and `porter serve` were
+> replaced by [`rust-sender/`](../rust-sender/README.md), which ships a
+> single static binary and needs no Node.js runtime — see
+> [ADR-0004](../docs/adr/0004-sender-language-rust.md).
+>
+> **Only `porter join` is still current here.** It is the one subcommand
+> with no Rust equivalent. Everything else in this directory — the
+> QR-slideshow sender, `porter serve` — is superseded and kept only for
+> reference. Do not build on it; use the Rust sender.
+>
+> This package is not covered by CI.
 
 Terminal-based QR code file transfer tool built with TypeScript and Node.js.
 

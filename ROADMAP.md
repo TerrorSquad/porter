@@ -8,7 +8,7 @@ live in the git history and `CHANGELOG.md`, not here.
 - [ ] **Sign and notarize the macOS app.** It is currently ad-hoc signed with
       no Team ID, so Gatekeeper blocks it on any machine but the one that
       built it. Needs a Developer ID certificate, `codesign --options
-  runtime`, then `xcrun notarytool submit` and `xcrun stapler staple`.
+runtime`, then `xcrun notarytool submit` and `xcrun stapler staple`.
       Nothing else on this list matters for other people until this is done.
 - [ ] **A `flutter-release` task** that builds, strips, signs, notarizes and
       staples in one step, once signing exists.

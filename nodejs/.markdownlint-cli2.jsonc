@@ -7,8 +7,9 @@
     "MD060": false,
     "MD001": false,
   },
-  // Globs reach up to the repo root: this config lives in nodejs/ (see
-  // ADR-0004 deprecation) but markdownlint still covers every .md in the repo.
+  // Globs resolve relative to the working directory, and markdownlint-cli2 is
+  // invoked from nodejs/ -- hence the ../ prefix to reach the repo root. See
+  // nodejs/package.json and forge.toml.
   "globs": [
     "../**/*.md",
     "!**/node_modules/**",
