@@ -81,6 +81,6 @@ Or via `mise`: `rust-build`, `rust-test`, `rust-check`, `rust-send`,
 The fountain PRNG/degree table and wire format
 (`index|total|mode|id|payload`, `F|seq|K|fileSize|id|payload`,
 `CHECKSUM|T|id|sha256`) must stay bit-identical to the Dart receiver
-(`flutter/lib/services/fountain_codec.dart`) and the TypeScript sender —
-see [`docs/adr/0002-fountain-vs-sequential.md`](../docs/adr/0002-fountain-vs-sequential.md).
+(`flutter/lib/services/fountain_codec.dart`) — see
+[`docs/adr/0002-fountain-vs-sequential.md`](../docs/adr/0002-fountain-vs-sequential.md).
 
