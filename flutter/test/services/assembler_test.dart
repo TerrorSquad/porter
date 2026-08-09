@@ -10,7 +10,10 @@ import 'package:porter_receiver/services/assembler.dart';
 import 'package:porter_receiver/services/fountain_codec.dart';
 
 /// Encodes [content] into `F|...` wire strings the way nodejs FountainChunker
-/// does, for driving Assembler.ingest in fountain-mode tests.
+/// does, for driving Assembler.ingest in fountain-mode tests. Always appends
+/// a trailing `CHECKSUM|T|...` chunk, matching fountain.ts's FountainChunker
+/// exactly (`total = symbolCount + 1`, unconditional -- unlike sequential
+/// mode's checksum, fountain's is never optional).
 List<String> _encodeFountain(List<int> content, int blockSize, int n, String id) {
   final k = (content.length / blockSize).ceil();
   final blocks = <List<int>>[];
@@ -34,6 +37,8 @@ List<String> _encodeFountain(List<int> content, int blockSize, int n, String id)
     }
     out.add('F|$seq|$k|${content.length}|$id|${base64.encode(symbol)}');
   }
+  final sha = sha256.convert(content).toString();
+  out.add('CHECKSUM|T|$id|$sha');
   return out;
 }
 
@@ -119,7 +124,7 @@ void main() {
 
     test('decompresses gzip-mode payloads', () {
       final original = utf8.encode('Hello, gzip world! ' * 5);
-      final compressed = GZipEncoder().encode(original)!;
+      final compressed = GZipEncoder().encode(original);
       final payload = base64.encode(compressed);
 
       final assembler = Assembler();
@@ -150,15 +155,14 @@ void main() {
       const blockSize = 16;
       final k = (content.length / blockSize).ceil();
       final n = (k * 3).clamp(k + 20, 1 << 30);
+      // _encodeFountain already appends the trailing CHECKSUM chunk.
       final chunks = _encodeFountain(content, blockSize, n, 'FN');
-      final sha = sha256.convert(content).toString();
 
       Transfer? completed;
       final assembler = Assembler(onComplete: (t) => completed = t);
       for (final c in chunks) {
         assembler.ingest(c);
       }
-      assembler.ingest('CHECKSUM|T|FN|$sha');
 
       final t = assembler.transfers['FN']!;
       expect(t.encoding, 'fountain');
@@ -179,13 +183,22 @@ void main() {
       const blockSize = 16;
       final k = (content.length / blockSize).ceil();
       final n = (k * 3).clamp(k + 20, 1 << 30);
-      final chunks = _encodeFountain(content, blockSize, n, 'LS');
+      // _encodeFountain appends the trailing CHECKSUM chunk. The drop/
+      // reverse below simulates lossy, out-of-order *symbol* scanning --
+      // the checksum frame is handled separately (see below) so this test
+      // isn't at the mercy of whether its index happens to land on a
+      // dropped position; a real scan loop keeps looping until every frame,
+      // checksum included, is eventually seen.
+      final allChunks = _encodeFountain(content, blockSize, n, 'LS');
+      final checksumChunk = allChunks.last;
+      final symbolChunks = allChunks.sublist(0, allChunks.length - 1);
 
       // Drop every 4th symbol, reverse the rest.
       final delivered = <String>[];
-      for (int i = 0; i < chunks.length; i++) {
-        if (i % 4 != 0) delivered.add(chunks[i]);
+      for (int i = 0; i < symbolChunks.length; i++) {
+        if (i % 4 != 0) delivered.add(symbolChunks[i]);
       }
+      delivered.add(checksumChunk);
 
       final assembler = Assembler();
       for (final c in delivered.reversed) {
@@ -195,6 +208,7 @@ void main() {
       final t = assembler.transfers['LS']!;
       expect(t.isComplete, true);
       expect(t.assembled, content);
+      expect(t.verified, true);
     });
 
     test('ignores duplicate fountain seqs', () {

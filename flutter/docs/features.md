@@ -41,9 +41,9 @@
 ### UI/UX
 
 - [x] Scanning screen with progress bar
-- [x] Chunk counter (current / total)
+- [x] Chunk/symbol counter (current / total)
 - [x] Duplicate counter
-- [x] Result screen with data preview
+- [x] Transfer list / history screen
 - [x] Dark theme with green accents
 - [x] Error messages
 
@@ -63,7 +63,6 @@
 - [ ] Scanning frame overlay animation
 - [ ] Haptic feedback on chunk detection
 - [ ] Better error recovery screens
-- [ ] Transfer history/logging (optional)
 
 ### Advanced Features
 
@@ -83,9 +82,15 @@
 
 ## Known Limitations
 
-- **QR Library**: Currently uses `mobile_scanner` which wraps system camera APIs. Performance depends on device CPU.
-- **Large Files**: 2 GB transfers will take 2-4 hours at 10 chunks/sec. Consider compression on sender side.
-- **Memory**: Stores assembled data in RAM. Very large files (>500 MB) may cause OOM on older devices.
+- **QR Library**: Currently uses `mobile_scanner` (vendored fork, pinned — see
+  `docs/architecture.md`) which wraps system camera APIs. Performance depends
+  on device CPU.
+- **Large Files**: Scan time scales with chunk count and lighting/device
+  speed, not file size directly.
+- **Memory**: Recovered block bytes are held in memory ~3x over by assembly
+  time (decoder state, transfer state, assembly buffer) — see
+  `docs/architecture.md` for the actual bottlenecks found and fixed
+  (worker isolate migration, lazy disk hydration, GF(2) elimination cap).
 
 ---
 

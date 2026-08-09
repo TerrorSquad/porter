@@ -20,14 +20,6 @@ group = "format"
 extensions = [".js", ".jsx", ".ts", ".tsx", ".vue", ".mjs", ".cjs", ".json", ".md", ".yml", ".yaml", ".css", ".scss"]
 restage = true
 
-[hooks.pre-commit.tools.stylelint]
-command = "stylelint"
-args = ["--fix", "--allow-empty-input", "--cache"]
-type = "node"
-group = "lint"
-extensions = [".vue", ".css", ".scss", ".sass", ".less"]
-restage = true
-
 # [hooks.pre-commit.tools.typescript]
 # command = "tsc"
 # args = ["--noEmit", "--skipLibCheck"]

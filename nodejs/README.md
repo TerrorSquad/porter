@@ -119,7 +119,7 @@ Use these presets unless you specifically need to tune individual feature flags:
 
 ### Project Structure
 
-```
+```text
 nodejs/
 ├── src/
 │   ├── index.ts          # CLI entry point
@@ -190,7 +190,7 @@ There is no specific frame you must catch — every frame you scan makes progres
 porter bigfile.bin --slideshow --fountain
 ```
 
-**When to prefer it**
+#### When to prefer it
 
 | Situation                                | Recommended mode     |
 | ---------------------------------------- | -------------------- |
@@ -214,7 +214,7 @@ Notes:
 Fountain frames use a distinct chunk type, recognised by the receiver before the
 sequential `index|total|mode|id|payload` format:
 
-```
+```text
 F|seq|K|fileSize|id|payload
 ```
 

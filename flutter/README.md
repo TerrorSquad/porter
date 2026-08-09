@@ -2,7 +2,9 @@
 
 Fast offline QR code file receiver for Android and macOS.
 
-**Status**: Initial scaffold complete. Core logic functional. UI screens in place. Ready for testing after Flutter setup.
+**Status**: In active use. See [docs/architecture.md](docs/architecture.md) for
+the real architecture (worker isolate, fountain decoding, disk resume) —
+sections below cover quick start and workflow only.
 
 ## Quick Start
 
@@ -22,60 +24,38 @@ flutter run
 
 ## What's Included
 
-| Component        | Status      | Notes                       |
-| ---------------- | ----------- | --------------------------- |
-| QR scanning      | ✅ Complete | Uses `mobile_scanner`       |
-| Chunk parsing    | ✅ Complete | Supports T, B, C modes      |
-| Data assembly    | ✅ Complete | Gzip decompression, SHA-256 |
-| File I/O         | ✅ Complete | Saves to Downloads          |
-| UI (scanning)    | ✅ Complete | Progress bar, torch control |
-| UI (results)     | ✅ Complete | Preview, save, scan again   |
-| State management | ✅ Complete | Provider pattern            |
-| Error handling   | ✅ Complete | User-friendly messages      |
+| Component        | Notes                                                                |
+| ---------------- | -------------------------------------------------------------------- |
+| QR scanning      | Uses `mobile_scanner` (vendored fork — see architecture doc)         |
+| Chunk parsing    | Sequential (T/B/C modes) and fountain (LT code)                      |
+| Data assembly    | Worker isolate, gzip decompression, SHA-256, GF(2) fallback          |
+| Disk resume      | Hydrates in-progress transfers from `chunk_NNNNNN.bin` on cold start |
+| File I/O         | Saves to Downloads                                                   |
+| UI (scanning)    | Progress bar, torch control                                          |
+| UI (transfers)   | Transfer list / history                                              |
+| State management | Provider pattern; worker isolate owns decode state                   |
 
 ## Project Structure
 
-```
-lib/
-├── main.dart                 # App entry, theme
-├── models/                   # Data classes
-│   ├── chunk.dart           # QR parsing
-│   └── transfer.dart        # Transfer state
-├── services/                 # Business logic
-│   ├── chunk_parser.dart    # QR → chunks
-│   ├── assembler.dart       # Assembly + verification
-│   └── file_handler.dart    # File I/O
-├── providers/                # State (Provider)
-│   └── scanner_provider.dart
-└── screens/                  # UI
-    ├── scanning_screen.dart  # Camera + QR detection
-    └── result_screen.dart    # Preview + save
-```
+See [docs/architecture.md](docs/architecture.md) for the full, kept-current
+file tree and data flow — not duplicated here to avoid drifting out of sync
+again.
 
 ## Key Features
 
-✅ **Real-time scanning** — No manual triggers, continuous QR detection  
-✅ **Offline only** — No internet, no cloud, no telemetry  
-✅ **Fast decoding** — Native Android APIs (15-30 chunks/sec vs 2-10 with web)  
-✅ **Multiple modes** — Text, Binary, Compressed (gzip)  
-✅ **Automatic file detection** — Guesses extension from magic bytes  
-✅ **SHA-256 verification** — Checksum validation  
-✅ **Dark theme** — Green accents, optimized for low light
+- **Real-time scanning** — No manual triggers, continuous QR detection
+- **Offline only** — No internet, no cloud, no telemetry
+- **Multiple modes** — Text, Binary, Compressed (gzip), Fountain (LT code)
+- **Resumable** — killed/relaunched app resumes from on-disk chunks
+- **SHA-256 verification** — Checksum validation on completion
+- **Dark theme** — optimized for low light
 
 ## Performance
 
-| Metric       | Value                               |
-| ------------ | ----------------------------------- |
-| Scan speed   | 5-30 chunks/sec (device dependent)  |
-| 100 KB file  | ~10-30 seconds scan                 |
-| 1 GB file    | ~30 min - 3 hours scan              |
-| Memory usage | ~2 bytes per chunk + assembled data |
-
-**Note**: Performance depends on:
-
-- Device CPU (M1 MacBook faster than Pixel 7)
-- Lighting (good lighting = faster QR detection)
-- QR code size (larger codes are easier to scan)
+Scan/decode speed depends on device CPU, lighting, and QR code size. See
+[docs/architecture.md](docs/architecture.md) for the actual bottlenecks
+found and fixed (worker isolate migration, GF(2) elimination cap, debounced
+metadata writes) and current memory characteristics.
 
 ## Building
 
@@ -116,31 +96,17 @@ flutter logs
 
 ## Architecture
 
-**Data Flow:**
-
-```
-Camera → mobile_scanner → ChunkParser → Assembler → ScannerProvider → UI
-```
-
-**State Management:**
-
-- Provider pattern
-- Single `ScannerProvider` holds all state
-- Notifies UI on changes
-
-**Core Logic:**
-
-- `Assembler` handles chunk deduplication, concatenation, decompression, verification
-- `FileHandler` manages file I/O with fallbacks
-- `ChunkParser` validates QR format
-
-See [docs/architecture.md](docs/architecture.md) for detailed breakdown.
+Camera → `mobile_scanner` → `ChunkParser` → worker isolate (`Assembler` +
+`FountainDecoder` + disk I/O) → `ProgressSnapshot` → `ScannerProvider` → UI.
+See [docs/architecture.md](docs/architecture.md) for the full breakdown,
+including why decoding runs off the UI thread and how disk resume works.
 
 ## Docs
 
 - **[features.md](docs/features.md)** — What's implemented, TODO, testing checklist
 - **[architecture.md](docs/architecture.md)** — Data flow, class design, performance notes
 - **[setup.md](docs/setup.md)** — Installation, build, deployment, troubleshooting
+- **[ANDROID_APP_SPEC.md](docs/ANDROID_APP_SPEC.md)** — Original design spec (historical; see architecture.md/features.md for current reality)
 
 ## Workflow
 
@@ -154,49 +120,30 @@ cd ../nodejs
 ### Receiving (Flutter App)
 
 1. Launch app on Android device or macOS
-2. Click "Start Camera" (or auto-starts)
-3. Point at QR codes from sender
-4. App detects and assembles chunks automatically
-5. When complete, click "Save File"
-6. File saved to Downloads
+2. Point at QR codes from sender (auto-starts scanning)
+3. App detects and assembles chunks automatically, showing live progress
+4. On completion, file is saved and SHA-256 verified automatically
 
-### Relaying (Optional)
-
-Run Node.js server on another machine:
-
-```bash
-./dist/porter.mjs serve --port=8080
-```
-
-Then configure app to relay chunks to server (future enhancement).
+`porter serve`/`porter join` (HTTP relay, multi-part joining) remain
+TypeScript-only for now — see the root [`docs/adr/`](../docs/adr/) for the
+sender's Rust migration status.
 
 ## Limitations
 
 - **QR size limit**: QR codes have max ~2KB capacity; files are split into chunks
-- **Memory constraint**: Entire assembled file stored in RAM (watch for >500 MB)
-- **Large files slow**: 2 GB at 10 chunks/sec = 3+ hours
 - **Lighting dependent**: Poor lighting = dropped frames = slower scanning
-
-## Future Enhancements
-
-- [ ] Server relay mode (POST chunks to `porter serve`)
-- [ ] Multiple concurrent transfers
-- [ ] Faster QR library (try ML Kit directly)
-- [ ] Streaming file assembly (reduce RAM usage)
-- [ ] Transfer history & logging
-- [ ] Custom chunk size config
-- [ ] iOS app (requires different QR library)
 
 ## Testing
 
-Manual test with Node.js sender:
+```bash
+flutter test
+```
+
+Manual end-to-end test with the Node.js sender:
 
 ```bash
-# Terminal 1: send
 cd nodejs && ./dist/porter.mjs test.txt --slideshow --speed=0.5
-
-# Device: open app, scan codes
-# Expected: file should assemble and save
+# Device: open app, scan codes — file should assemble, verify, and save
 ```
 
 For detailed test cases, see [docs/features.md](docs/features.md#testing-checklist).
@@ -204,13 +151,3 @@ For detailed test cases, see [docs/features.md](docs/features.md#testing-checkli
 ## License
 
 ISC (same as Porter)
-
-## Next Steps
-
-1. **Install Flutter** → `flutter doctor` should pass
-2. **Run app** → `flutter run` on device
-3. **Test parsing** → Scan Node.js sender output
-4. **Debug issues** → Check `flutter logs`
-5. **Optimize** → Profile QR detection speed
-
-For setup details, see [docs/setup.md](docs/setup.md).

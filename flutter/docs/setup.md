@@ -145,7 +145,7 @@ cd ../nodejs
 
 Create `.env` file if needed for build variants:
 
-```
+```text
 FLUTTER_RELEASE_MODE=true
 TARGET_API_LEVEL=31
 ```

@@ -9,7 +9,7 @@ void main() {
 }
 
 class PorterApp extends StatelessWidget {
-  const PorterApp({Key? key}) : super(key: key);
+  const PorterApp({super.key});
 
   @override
   Widget build(BuildContext context) {

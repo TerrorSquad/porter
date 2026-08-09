@@ -40,12 +40,13 @@ p4k, square720, square1080 }` with:
     `scanning_screen.dart`, same enumeration via `controller.getAvailableCameras()`.
 
 **Persistence keys (SharedPreferences):**
-| Key | Type | Default |
-|-----|------|---------|
-| `porter.outputDirectory` | String | absent → `null` (use `~/Downloads`) |
-| `porter.cameraResolution` | String (enum name) | absent → `p720` |
-| `porter.relayUrl` | String | absent → `''` |
-| `porter.selectedCameraId` | String | absent → `null` (first camera) |
+
+| Key                       | Type               | Default                             |
+| ------------------------- | ------------------ | ----------------------------------- |
+| `porter.outputDirectory`  | String             | absent → `null` (use `~/Downloads`) |
+| `porter.cameraResolution` | String (enum name) | absent → `p720`                     |
+| `porter.relayUrl`         | String             | absent → `''`                       |
+| `porter.selectedCameraId` | String             | absent → `null` (first camera)      |
 
 **Wiring:**
 
@@ -101,11 +102,13 @@ Today `start()` always sets `captureSession!.sessionPreset = AVCaptureSession.Pr
 and ignores any requested resolution. Extend it:
 
 1. Add `intArray(key:)` to `MapArgumentReader` (next to `stringArray`):
+
    ```swift
    func intArray(key: String) -> [Int]? {
        return (args?[key] as? [Any])?.compactMap { ($0 as? NSNumber)?.intValue }
    }
    ```
+
 2. In `start()`, after `device` is selected, read `cameraResolution` (`[width, height]`).
    If present:
    - `captureSession!.sessionPreset = .inputPriority`

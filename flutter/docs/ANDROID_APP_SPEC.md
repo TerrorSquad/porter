@@ -1,5 +1,11 @@
 # Porter Android App — Feature Specification
 
+**Note**: This is the original design spec, predating the current
+implementation. For the real architecture, worker isolate design, and
+fountain decoding, see [architecture.md](architecture.md); for what's
+actually implemented, see [features.md](features.md). Kept here as
+historical context for the original feature intent.
+
 ## 📋 Overview
 
 A standalone Android app that scans continuous QR code streams from a terminal and reassembles the original file offline. Part of the air-gapped file transfer system.
@@ -11,7 +17,7 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 ### 1. **Camera & QR Detection**
 
 - **Real-time camera feed** from rear-facing camera
-- **Continuous QR scanning** (not one-shot) using `jsQR` equivalent
+- **Continuous QR scanning** (not one-shot) via `mobile_scanner`
 - **Auto-detection** — no button press required, scans as QR codes appear
 - **Visual feedback** — green frame when QR detected
 - **Debouncing** — ignore duplicate scans within 300ms
@@ -113,7 +119,7 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 
 ## 📱 User Flow
 
-```
+```text
 1. USER LAUNCHES APP
    ↓
 2. REQUEST PERMISSIONS (Camera, Storage)
@@ -160,7 +166,7 @@ A standalone Android app that scans continuous QR code streams from a terminal a
 
 ### Text Mode (T)
 
-```
+```text
 QR1: 0|3|T|Hello
 QR2: 1|3|T| World
 QR3: 2|3|T|!
@@ -170,7 +176,7 @@ Result: "Hello World!"
 
 ### Binary Mode (B)
 
-```
+```text
 QR1: 0|2|B|aGVsbG8gd29ybGQ=  (base64 for "hello world")
 QR2: 1|2|B|
 
@@ -179,7 +185,7 @@ Result: Binary data (file saved as .bin or detected type)
 
 ### Compressed Mode (C)
 
-```
+```text
 QR1: 0|1|C|H4sIAA...  (gzip compressed base64)
 QR2: (none if large file split)
 
@@ -205,9 +211,9 @@ Result: Decompressed → saved file
 
 ## 🎨 UI Mockup Hints
 
-### Scanning Screen
+### Scanning Screen Mockup
 
-```
+```text
 ┌─────────────────────────────┐
 │     [Camera Feed]           │
 │                             │
@@ -224,7 +230,7 @@ Result: Decompressed → saved file
 
 ### Result Screen
 
-```
+```text
 ┌─────────────────────────────┐
 │      📦 Received Data       │
 ├─────────────────────────────┤

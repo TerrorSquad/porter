@@ -165,13 +165,27 @@ class Assembler {
   }
 
   void _tryComplete(Transfer t) {
-    if (t.isComplete) {
-      t.completedAt = DateTime.now();
-      // The live-ingest path always has every chunk's bytes already in
-      // memory (see ingest()), so this never actually awaits — fire-and
-      // -forget keeps _tryComplete/ingest synchronous for existing callers.
-      unawaited(_assemble(t));
-    }
+    if (!t.isComplete) return;
+
+    // Fountain's wire format always sends a trailing CHECKSUM frame
+    // (fountain.ts always appends one, unconditionally — unlike sequential
+    // mode, where it's optional per --verify). The final data-carrying
+    // symbol can complete every block before that checksum frame has been
+    // ingested, since ordering between "last block recovered" and "checksum
+    // received" isn't guaranteed. Firing onComplete here would send a
+    // premature TransferCompletedEvent with verified still null, and then a
+    // second, verified one once the checksum lands — a real double-fire
+    // bug (onTransferComplete can trigger auto-save, so this risked saving
+    // twice). Wait for the checksum instead: the ChecksumChunk branch in
+    // ingest() calls _tryComplete again once it arrives, which is a no-op
+    // here until then and completes normally once it does.
+    if (t.encoding == 'fountain' && t.checksum == null) return;
+
+    t.completedAt = DateTime.now();
+    // The live-ingest path always has every chunk's bytes already in
+    // memory (see ingest()), so this never actually awaits — fire-and
+    // -forget keeps _tryComplete/ingest synchronous for existing callers.
+    unawaited(_assemble(t));
   }
 
   Future<void> _assemble(Transfer t) async {

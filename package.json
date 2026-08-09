@@ -1,5 +1,5 @@
 {
-  "name": "php_booster",
+  "name": "porter",
   "private": true,
   "type": "module",
   "version": "2.8.0",
@@ -12,6 +12,7 @@
     "@typescript-eslint/eslint-plugin": "8.57.2",
     "@typescript-eslint/parser": "8.57.2",
     "eslint": "10.1.0",
+    "markdownlint-cli2": "^0.23.2",
     "prettier": "3.8.1",
     "typescript": "^5.9.3"
   }

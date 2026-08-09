@@ -4,9 +4,9 @@
     "usernamehw.errorlens",
     "Gruntfuggly.todo-tree",
     "vivaxy.vscode-conventional-commits",
-    "devsense.phptools-vscode",
     "IgorSbitnev.error-gutters",
     "wayou.vscode-todo-highlight",
-    "getpsalm.psalm-vscode-plugin"
+    "rust-lang.rust-analyzer",
+    "Dart-Code.flutter"
   ]
 }

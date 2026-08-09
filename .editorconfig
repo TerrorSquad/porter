@@ -8,34 +8,27 @@ root = true
 charset = utf-8
 end_of_line = lf
 insert_final_newline = true
-
-# Matches multiple files
-[*.{html,phtml,js,json,md,xml,yaml,yml}]
-indent_style = space
-indent_size = 4
 trim_trailing_whitespace = true
-
-[*.php]
 indent_style = space
-indent_size = 4
-trim_trailing_whitespace = true
-
-# Indentation override for JSON and YAML files
-[*.{json,yaml,yml}]
 indent_size = 2
 
-# Markdown files should have a space after the #
-[*.md]
-indent_style = space
+# Matches Prettier's tabWidth (prettier.config.mjs)
+[*.{js,jsx,ts,tsx,mjs,cjs,json,md,yml,yaml}]
+indent_size = 2
+
+# rustfmt / dart format own their own formatting; indent_size here is a
+# fallback for editors that don't run the formatter on save.
+[*.rs]
 indent_size = 4
+
+[*.dart]
+indent_size = 2
+
+[Dockerfile*]
 trim_trailing_whitespace = true
 
-# Ignore compiled binary files, libraries and folders
-[{composer.lock,*.phar,vendor,node_modules,public,var}]
+# Ignore compiled/binary/vendored content
+[{node_modules,dist,build,target,vendor}/**]
 charset = binary
 insert_final_newline = false
 trim_trailing_whitespace = false
-
-# Ensure no trailing spaces in Dockerfiles.
-[Dockerfile*]
-trim_trailing_whitespace = true

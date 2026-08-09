@@ -15,7 +15,7 @@ import 'settings_screen.dart';
 import 'transfers_screen.dart';
 
 class ScanningScreen extends StatefulWidget {
-  const ScanningScreen({Key? key}) : super(key: key);
+  const ScanningScreen({super.key});
 
   @override
   State<ScanningScreen> createState() => _ScanningScreenState();

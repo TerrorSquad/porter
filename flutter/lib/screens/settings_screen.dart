@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,8 +15,7 @@ import '../services/secure_bookmark.dart';
 class SettingsScreen extends StatefulWidget {
   final List<Map<String, String>> availableCameras;
 
-  const SettingsScreen({Key? key, this.availableCameras = const []})
-      : super(key: key);
+  const SettingsScreen({super.key, this.availableCameras = const []});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -33,7 +34,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadDefaultDownloadsPath() async {
-    final dir = await getDownloadsDirectory();
+    // getDownloadsDirectory() throws UnsupportedError on platforms without a
+    // platform-channel implementation for it (e.g. plain Linux, which is
+    // what flutter-ci.yml's ubuntu-latest runner is) -- this is only ever a
+    // hint shown in Settings, so fall back to "unknown" rather than crash
+    // the screen on platforms where it isn't available.
+    Directory? dir;
+    try {
+      dir = await getDownloadsDirectory();
+    } on UnsupportedError {
+      dir = null;
+    }
     if (mounted) {
       setState(() {
         _defaultDownloadsPath = dir?.path;

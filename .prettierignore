@@ -1,6 +1,10 @@
-.husky
-vendor
 node_modules
-dist
-coverage
-public/build
+nodejs/node_modules
+nodejs/dist
+flutter/build
+flutter/.dart_tool
+flutter/macos/Flutter/ephemeral
+flutter/third_party
+rust-sender/target
+pnpm-lock.yaml
+CHANGELOG.md

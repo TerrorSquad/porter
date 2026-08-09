@@ -27,14 +27,16 @@ flutter/
 │   │   └── scanner_provider.dart    # State management (Provider), owns the worker isolate
 │   └── screens/
 │       ├── scanning_screen.dart     # Main camera + QR detection UI
-│       └── transfers_screen.dart    # Transfer list / history UI
+│       ├── transfers_screen.dart    # Transfer list / history UI
+│       └── settings_screen.dart     # App settings
 ├── android/
 │   └── AndroidManifest.xml          # Permissions, app config
 ├── pubspec.yaml                     # Dependencies
 └── docs/
     ├── features.md
     ├── architecture.md (this file)
-    └── setup.md
+    ├── setup.md
+    └── ANDROID_APP_SPEC.md          # Original design spec (historical)
 ```
 
 ## Data Flow

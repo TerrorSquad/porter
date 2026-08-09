@@ -3,50 +3,46 @@
 **Transfer files between computers without a network. Scan QR codes from a terminal with any device camera.**
 
 ```bash
-cd nodejs
-./dist/porter.mjs myfile.txt --slideshow
+porter-sender myfile.txt
 # → Phone scans QR codes, file is reassembled locally
 ```
 
-## 📦 Quick Start
+## 📦 Components
+
+| Component                                   | Role                                                                              | Status                                                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **[`rust-sender/`](rust-sender/README.md)** | Terminal QR-slideshow sender + `porter serve` HTTP receiver, single static binary | Active — the primary sender going forward                                                          |
+| **[`flutter/`](flutter/README.md)**         | Receiver app (Android + macOS), scans QR frames and reassembles the file          | Active — the real receiver, in daily use                                                           |
+| **[`nodejs/`](nodejs/README.md)**           | Original TypeScript sender + `porter serve`/`porter join`                         | `serve`/`join` stay here indefinitely; the QR-slideshow sender is being replaced by `rust-sender/` |
+
+Why the sender moved to Rust: a single static binary needs no Node.js
+runtime on the sending machine, which matters for an air-gapped tool. See
+[`docs/adr/0004-sender-language-rust.md`](docs/adr/0004-sender-language-rust.md).
+
+## 🚀 Quick Start
 
 ```bash
-cd nodejs
-pnpm install
-pnpm run build:slim
-./dist/porter.slideshow-only.mjs myfile.txt
+cd rust-sender
+cargo build --release
+./target/release/porter-sender myfile.txt --slideshow
 ```
 
-**→ See [nodejs/README.md](nodejs/README.md) for detailed installation & usage**
+Or with `mise` from the repo root: `mise run rust-install` builds and
+copies the binary to `~/.local/bin/porter-sender`.
 
-### HTTP Receiver (porter serve)
-
-```bash
-cd nodejs
-./dist/porter.mjs serve --port=8080
-# → Any device on your LAN can POST QR scan JSON to http://<ip>:8080/upload
-```
-
----
-
-## 📚 Documentation
-
-| Document                                       | Purpose                                       |
-| ---------------------------------------------- | --------------------------------------------- |
-| **[nodejs/README.md](nodejs/README.md)**       | Node.js sender, receiver, join, build presets |
-| **[ANDROID_APP_SPEC.md](ANDROID_APP_SPEC.md)** | Flutter receiver app spec                     |
-
----
+**→ See [rust-sender/README.md](rust-sender/README.md) for the full sender
+docs (controls, `--fountain`, `porter serve`) and
+[flutter/README.md](flutter/README.md) for the receiver app.**
 
 ## 🎯 How It Works
 
-```
+```text
 Offline Computer              Phone / Receiver
    (Sender)                    (Scanner)
        │
        ├─ Read file
        ├─ Split into chunks
-       ├─ Encode as Base64 (binary)
+       ├─ Encode as Base64 (binary) or fountain (LT code)
        ├─ Create QR codes
        └─ Display slideshow
               │
@@ -59,143 +55,60 @@ Offline Computer              Phone / Receiver
                    └─ Save file
 ```
 
----
-
 ## 🚀 Features
 
-✅ **Offline** — No internet, no cloud, no telemetry  
-✅ **Fast** — 2-10 chunks/sec depending on lighting  
-✅ **Portable** — ~20 KB executable, runs on Node.js 18+  
-✅ **Reliable** — Header protocol handles dropped/reordered chunks  
-✅ **Flexible** — Works with any camera, terminal, phone OS  
-✅ **Fountain mode** — Optional `--fountain` (LT codes): rebuild a file from _any_ sufficient subset of frames, ideal for long/lossy scans
-
----
+✅ **Offline** — No internet, no cloud, no telemetry
+✅ **Fast** — chunks/sec depends on lighting and terminal size; `--multi` renders several QR codes per frame
+✅ **Single binary** — the Rust sender needs no runtime installed on the sending machine
+✅ **Reliable** — header protocol handles dropped/reordered chunks
+✅ **Flexible** — works with any camera, terminal, phone OS
+✅ **Fountain mode** — `--fountain` (LT codes): rebuild a file from _any_ sufficient subset of frames, ideal for long/lossy scans
+✅ **Resumable receiver** — the Flutter app resumes an interrupted transfer from on-disk chunks, no re-scanning
 
 ## 💾 What's Inside
 
-```
+```text
 .
-├── nodejs/
-│   ├── src/               # TypeScript source
-│   │   ├── porter.ts      # CLI entry point (send / serve / join)
-│   │   └── lib/           # chunker, renderer, state, receiver, joiner
-│   ├── scripts/           # Build helpers like size reporting
-│   ├── dist/              # Ignored generated Node builds
-│   ├── package.json
-│   └── test-porter.sh
-├── flutter/               # Flutter receiver app (Android/macOS)
+├── rust-sender/            # Rust sender + porter serve (primary sender)
+│   └── src/                # cli, chunker, fountain, renderer, tui, serve
+├── flutter/                # Receiver app (Android/macOS)
+│   └── lib/                # services (assembler, fountain decoder), providers, screens
+├── nodejs/                 # Original TypeScript sender; serve/join stay here
+│   └── src/lib/            # chunker, renderer, receiver, joiner, fountain
+├── docs/adr/                # Architecture decision records
 ├── mise.toml
-├── ANDROID_APP_SPEC.md
 └── README.md
 ```
 
----
+## 📱 Wire Format
 
-## 📱 Building a Receiver
-
-The Porter sender generates scannable QR codes. You can build a receiver app in any language:
-
-- **Flutter Reference:** See [ANDROID_APP_SPEC.md](ANDROID_APP_SPEC.md) for specifications
-- **CLI:** Use any QR library to decode chunks and rebuild the file
-
-All you need is the chunk format: `index|total|mode|id|payload`
-
-Senders run with `--fountain` instead emit fountain (LT code) frames,
-`F|seq|K|fileSize|id|payload`, which a receiver reconstructs from any sufficient
-subset. See [nodejs/README.md](nodejs/README.md#-fountain-coding-mode---fountain)
-for the wire format and the cross-language PRNG/decoder design.
-
----
-
-## 🔧 Technology
-
-| Component            | Purpose                                     |
-| -------------------- | ------------------------------------------- |
-| **Rollup**           | Bundle TypeScript → single-file JS          |
-| **qrcode-generator** | QR matrix generation for terminal rendering |
-| **Node.js Crypto**   | MD5 checksums                               |
-| **Zlib**             | Server-side gzip                            |
-
----
-
-## 📊 Performance
-
-| Metric                | Value               |
-| --------------------- | ------------------- |
-| Executable size       | 8.1 KB              |
-| With dependencies     | 2 MB                |
-| Default speed         | 2 chunks/sec        |
-| Max speed             | 10 chunks/sec       |
-| Typical file transfer | 100K file ≈ 3-5 min |
-
----
+Sequential chunks: `index|total|mode|id|payload`. Fountain (LT code)
+symbols: `F|seq|K|fileSize|id|payload`. Checksum: `CHECKSUM|T|id|sha256`.
+Any conformant receiver just needs to parse this format — the xorshift32
+PRNG and degree table that derive `(degree, indices)` for fountain mode
+must stay bit-identical across implementations; see
+[`docs/adr/0002-fountain-vs-sequential.md`](docs/adr/0002-fountain-vs-sequential.md).
 
 ## 🔐 Security
 
-- **Offline by design** — No network calls
-- **No logging** — No history stored (except progress checkpoint)
-- **No telemetry** — No analytics or tracking
-- **Local processing** — All QR generation on-device
-- **Optional** — Progress file can be deleted anytime
+- **Offline by design** — no network calls from the sender or the QR path
+- **No default disk trace** — the Rust sender's slideshow-position file (`.porter_history`) is opt-in via `--resume`, not written by default
+- **No telemetry** — no analytics or tracking anywhere
+- **Local processing** — all QR generation and decoding on-device
 
----
-
-## 🛠️ Usage
-
-### Node.js Version
+## 🔨 Development
 
 ```bash
-cd nodejs
-./dist/porter.slideshow-only.mjs myfile.pdf --speed=0.3
-
-# Receive files over HTTP from another device on your LAN
-./dist/porter.mjs serve --port=8080 --output-dir=received
-
-# Join a previously received multi-part transfer
-./dist/porter.mjs join received/<id>
+mise run rust-build     # cargo build --release
+mise run rust-test       # cargo test
+mise run rust-check      # cargo clippy + cargo fmt --check
+mise run flutter-build   # flutter build macos --release
+mise run node-build      # pnpm run build (nodejs/)
 ```
 
-**For detailed commands and options, see [nodejs/README.md](nodejs/README.md)**
-
----
-
-## 🔨 Build And Distribution
-
-### Workspace Prerequisites
-
-- Node.js `24.13.0` and `pnpm 10.30.1` for `nodejs/`
-- `mise` is optional; the repo already defines matching tasks in `mise.toml`
-
-### Node.js Builds
-
-```bash
-cd nodejs
-pnpm install
-
-# Build both artifacts at once
-pnpm run build
-
-# Or individually
-pnpm run build:external    # porter.mjs  (requires qrcode-generator)
-pnpm run build:standalone  # porter.standalone.mjs  (self-contained, no dependencies)
-```
-
-Artifacts:
-
-- `nodejs/dist/porter.mjs` — requires `qrcode-generator` to be installed alongside it
-- `nodejs/dist/porter.standalone.mjs` — single copyable file, no external dependencies
-
-### mise Tasks
-
-From the repo root:
-
-```bash
-mise run node-install
-mise run node-build
-```
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites and conventions,
+and [`docs/adr/`](docs/adr/) for the architectural decisions behind the
+receiver's worker isolate, the fountain codec, and the sender's Rust move.
 
 ## 🤝 Contributing
 
@@ -203,10 +116,8 @@ This is a hobby project, but PRs welcome for:
 
 - Performance improvements
 - Better error messages
-- New platforms (iOS, desktop apps)
+- New receiver platforms (iOS, desktop)
 - Documentation improvements
-
----
 
 ## 📄 License
 

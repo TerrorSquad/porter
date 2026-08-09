@@ -69,9 +69,20 @@ void main() {
         worker!.ingestQR(line);
       }
 
-      await waitFor(() => events.any((e) => e is TransferCompletedEvent));
+      // The fixture's CHECKSUM frame is the last line, so the transfer can
+      // complete (all fountain blocks decoded) before the checksum has been
+      // ingested -- Assembler fires a TransferCompletedEvent for that first
+      // completion with verified still null, then a second, verified one
+      // once the checksum frame lands. Waiting for just "any"
+      // TransferCompletedEvent races against which of those two arrives
+      // first; wait for one that's actually been verified instead.
+      await waitFor(
+        () => events.any((e) => e is TransferCompletedEvent && e.snapshot.verified != null),
+      );
 
-      final completed = events.whereType<TransferCompletedEvent>().last;
+      final completed = events
+          .whereType<TransferCompletedEvent>()
+          .lastWhere((e) => e.snapshot.verified != null);
       expect(completed.snapshot.isComplete, true);
       expect(completed.snapshot.verified, true);
       expect(completed.snapshot.checksum, expectedSha);

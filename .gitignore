@@ -7,35 +7,21 @@
 .porter_history
 test.txt
 test_data/
+received/
 
 # Node.js workspace
 nodejs/node_modules/
 nodejs/dist/
 nodejs/test_data/
 
-# Go workspace
-golang/porter
-golang/received/
-
-
-# --- Added by php-booster integration ---
-vendor
+# Editor / tooling
 .idea
-node_modules
-.pnpm-store
-coverage.xml
-phpstan_sonar.json
-psalm_sonar.json
-.phpunit.result.cache
-.ddev/php/xdebug-local.ini
-.qodo
 .vscode/tasks.json
 .vscode/launch.json
 .vscode/settings.json
-.ddev/homeadditions/.gitconfig
-.deptrac.cache
+node_modules
+.pnpm-store
 .eslintcache
-
 .forge
+.qodo
 
-received

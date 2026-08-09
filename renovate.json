@@ -11,19 +11,11 @@
       "matchDepTypes": ["devDependencies"],
       "groupName": "dev dependencies",
       "schedule": ["every weekend"]
-    },
-    {
-      "matchPackagePatterns": [
-        "phpunit/",
-        "phpstan/",
-        "psalm/",
-        "symfony/",
-        "doctrine/",
-        "guzzlehttp/"
-      ],
-      "groupName": "PHP dependencies"
     }
   ],
+  "cargo": {
+    "enabled": true
+  },
   "timezone": "Europe/Paris",
   "schedule": ["every weekend"],
   "labels": ["dependencies", "renovate"],

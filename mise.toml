@@ -9,3 +9,39 @@ run = "pnpm install:local"
 [tasks.node-build]
 dir = "nodejs"
 run = "pnpm run build"
+
+[tasks.flutter-build]
+dir = "flutter"
+run = "flutter build macos --release"
+
+[tasks.flutter-install]
+dir = "flutter"
+depends = ["flutter-build"]
+run = "cp -R build/macos/Build/Products/Release/porter_receiver.app /Applications/"
+
+[tasks.rust-build]
+dir = "rust-sender"
+run = "cargo build --release"
+
+[tasks.rust-install]
+dir = "rust-sender"
+depends = ["rust-build"]
+run = "cp target/release/porter-sender ~/.local/bin/porter-sender"
+
+[tasks.rust-test]
+dir = "rust-sender"
+run = "cargo test"
+
+[tasks.rust-check]
+dir = "rust-sender"
+run = "cargo clippy --all-targets -- -D warnings && cargo fmt --check"
+
+[tasks.rust-send]
+dir = "rust-sender"
+depends = ["rust-build"]
+run = "cargo run --release --"
+
+[tasks.rust-serve]
+dir = "rust-sender"
+depends = ["rust-build"]
+run = "cargo run --release -- serve"

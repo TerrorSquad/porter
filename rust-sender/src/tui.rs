@@ -1,0 +1,490 @@
+//! Full ratatui TUI: widget tree (QR grid, sidebar, status/input line),
+//! app state, and top-level render dispatch. Replaces the old ANSI-string
+//! `Renderer` -- the QR encoding itself (`renderer::build_qr_lines`) is
+//! reused verbatim; only how the resulting lines get placed on screen
+//! changes (ratatui `Buffer` cells instead of cursor-position escapes).
+
+use ratatui::Frame;
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Paragraph, Widget};
+
+use crate::qrtypes::EccLevel;
+use crate::renderer::build_qr_lines;
+
+const GRID_GAP_X: u16 = 2;
+const GRID_GAP_Y: u16 = 1;
+const SIDEBAR_WIDTH: u16 = 32;
+
+/// Text-entry state for `J` (jump-to-chunk) and `G` (gap-fill list) --
+/// replaces the old blocking `stdin().read_line()` prompts with a real
+/// status-line editor the event loop drives character-by-character.
+pub enum InputMode {
+    Normal,
+    JumpToChunk(String),
+    GapFillList(String),
+}
+
+pub struct RenderOptions {
+    pub speed: f64,
+    pub is_slideshow: bool,
+    pub use_inverted: bool,
+    pub ecc_level: EccLevel,
+    pub multi_qr: Option<u32>,
+    pub no_info: bool,
+}
+
+/// All sender state the UI reads. Owns what `Renderer` used to own
+/// (`index`/`chunks`/`version`/`options`) plus the layout math that used to
+/// live on `Renderer` as methods -- pure state/computation, no I/O, so it
+/// moved here unchanged rather than being rewritten.
+pub struct App {
+    pub index: usize,
+    pub chunks: Vec<String>,
+    pub version: i32,
+    // Stored but not currently rendered, mirroring the pre-TUI Renderer's
+    // own fileName (also stored, also never shown) -- kept for parity and
+    // future use (e.g. a window/status-bar title).
+    #[allow(dead_code)]
+    pub file_name: String,
+    pub options: RenderOptions,
+    pub input_mode: InputMode,
+    pub countdown: Option<u8>,
+    pub status_message: Option<String>,
+    pub started_at: std::time::Instant,
+    /// Times the slideshow has wrapped back to the first chunk. Only
+    /// advanced by `advance_slideshow` in main.rs, never by manual
+    /// next/prev -- manual scrubbing past the end isn't "a loop".
+    pub loop_count: u64,
+}
+
+impl App {
+    pub fn new(file_name: String, options: RenderOptions) -> Self {
+        App {
+            index: 0,
+            chunks: Vec::new(),
+            version: 2,
+            file_name,
+            options,
+            input_mode: InputMode::Normal,
+            countdown: None,
+            status_message: None,
+            started_at: std::time::Instant::now(),
+            loop_count: 0,
+        }
+    }
+
+    pub fn set_chunks(&mut self, chunks: Vec<String>, version: i32) {
+        self.chunks = chunks;
+        self.version = version;
+        if self.index >= self.chunks.len() {
+            self.index = 0;
+        }
+    }
+
+    pub fn move_by(&mut self, step: i32) {
+        if step >= 0 {
+            self.index = (self.index + step as usize).min(self.chunks.len().saturating_sub(1));
+        } else {
+            self.index = self.index.saturating_sub((-step) as usize);
+        }
+    }
+
+    pub fn move_next(&mut self, term_width: u16, term_height: u16) {
+        let step = self.effective_multi_qr(term_width, term_height) as i32;
+        self.move_by(step);
+    }
+
+    pub fn move_prev(&mut self, term_width: u16, term_height: u16) {
+        let step = self.effective_multi_qr(term_width, term_height) as i32;
+        self.move_by(-step);
+    }
+
+    fn qr_column_width(&self) -> u16 {
+        let module_count = self.version * 4 + 17;
+        (module_count + 3) as u16
+    }
+
+    fn qr_row_height(&self) -> u16 {
+        (self.version * 2 + 10) as u16
+    }
+
+    fn grid_dimensions(&self, n: u32) -> (u16, u16, u16, u16) {
+        let n = n.max(1) as f64;
+        let cols = (n.sqrt().ceil() as u16).max(1);
+        let rows = ((n / cols as f64).ceil() as u16).max(1);
+        let width = cols * self.qr_column_width() + (cols - 1) * GRID_GAP_X;
+        let height = rows * self.qr_row_height() + (rows - 1) * GRID_GAP_Y;
+        (cols, rows, width, height)
+    }
+
+    pub fn effective_multi_qr(&self, term_width: u16, term_height: u16) -> u32 {
+        let configured = self.options.multi_qr.unwrap_or(1);
+        let mut n = configured;
+        while n > 1 {
+            let (_, _, width, height) = self.grid_dimensions(n);
+            if width <= term_width && height <= term_height {
+                return n;
+            }
+            n -= 1;
+        }
+        1
+    }
+}
+
+struct QrData {
+    lines: Vec<String>,
+    is_checksum: bool,
+}
+
+/// Renders the QR half-block grid at the top-left of `area`, matching the
+/// old `render_multi_qr`'s grid math (same gaps, same cols/rows layout).
+struct QrGridWidget<'a> {
+    qr_data: &'a [QrData],
+    cols: u16,
+    use_inverted: bool,
+}
+
+impl Widget for QrGridWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let qr_width = self
+            .qr_data
+            .first()
+            .and_then(|d| d.lines.first())
+            .map(|l| l.chars().count() as u16)
+            .unwrap_or(0);
+        let max_qr_height = self
+            .qr_data
+            .iter()
+            .map(|d| d.lines.len() as u16)
+            .max()
+            .unwrap_or(0);
+        // `--invert`: swap fg/bg via ratatui Style, matching the old raw
+        // `\x1b[7m` (reverse video) escape's visual effect without baking
+        // ANSI bytes into the QR-line strings themselves (see
+        // renderer::build_qr_lines's doc comment for why that would break).
+        let style = if self.use_inverted {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default()
+        };
+
+        for (q_idx, qr) in self.qr_data.iter().enumerate() {
+            let col = q_idx as u16 % self.cols;
+            let row = q_idx as u16 / self.cols;
+            let x = area.x + col * (qr_width + GRID_GAP_X);
+            let y = area.y + row * (max_qr_height + GRID_GAP_Y);
+
+            for (line_idx, line) in qr.lines.iter().enumerate() {
+                let ly = y + line_idx as u16;
+                if ly >= area.y + area.height {
+                    continue;
+                }
+                buf.set_string(x, ly, line, style);
+            }
+        }
+    }
+}
+
+/// Bordered info panel: chunk/progress/version/ETA/ECC/controls. Same
+/// fields as the old `render_sidebar`, styled via ratatui's `Style` instead
+/// of raw ANSI codes -- this is the part of the UI where "real ratatui"
+/// (bordered panel vs. bare cursor-positioned text) is most visible.
+struct SidebarWidget<'a> {
+    app: &'a App,
+    primary_is_checksum: bool,
+    codes_rendered: usize,
+}
+
+impl Widget for SidebarWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let block = Block::bordered().title(" Porter ");
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        let progress =
+            (((self.app.index + 1) as f64 / self.app.chunks.len() as f64) * 100.0).round() as i32;
+        let multi_str = if self.codes_rendered > 1 {
+            format!(" (×{})", self.codes_rendered)
+        } else {
+            String::new()
+        };
+        let end_chunk = (self.app.index + self.codes_rendered).min(self.app.chunks.len());
+        let chunk_range = if self.codes_rendered > 1 {
+            format!("{}–{}", self.app.index + 1, end_chunk)
+        } else {
+            format!("{}", self.app.index + 1)
+        };
+        let eta = ((self.app.chunks.len() - self.app.index) as f64 * self.app.options.speed).round()
+            as i64;
+        let elapsed = format_duration(self.app.started_at.elapsed());
+
+        let mut lines = vec![
+            Line::from(vec![
+                "📦 CHUNK: ".green().bold(),
+                format!("{chunk_range} / {}{multi_str}", self.app.chunks.len()).into(),
+            ]),
+            Line::from(vec![
+                "📊 PROG:  ".green().bold(),
+                format!("{progress}%").into(),
+            ]),
+            Line::raw(""),
+            Line::from(vec![
+                "📏 VER:   ".yellow().bold(),
+                format!("{}", self.app.version).into(),
+            ]),
+            Line::from(vec!["⏳ ETA:   ".yellow().bold(), format!("{eta}s").into()]),
+            Line::from(vec!["🕐 TIME:  ".yellow().bold(), elapsed.into()]),
+            Line::from(vec![
+                "🔁 LOOPS: ".yellow().bold(),
+                format!("{}", self.app.loop_count).into(),
+            ]),
+            if self.primary_is_checksum {
+                Line::from("✓ CHECKSUM".magenta().bold())
+            } else {
+                Line::from(vec![
+                    "🛡️  ECC:   ".magenta().bold(),
+                    format!("{}", self.app.options.ecc_level).into(),
+                ])
+            },
+            Line::raw(""),
+            Line::from("🕹️  CONTROLS:".blue().bold()),
+            Line::from("   Next:  [L]/[→]"),
+            Line::from("   Back:  [H]/[←]"),
+            Line::from("   Scrub: [Shift+←→]"),
+            Line::from("   Jump:  [J]  Gap-fill: [G]"),
+            Line::from("   Speed: [+]/[-]"),
+            Line::from("   Info:  [I]  Auto: [S]"),
+            Line::from("   Quit:  [Q]"),
+        ];
+
+        if let Some(n) = self.app.countdown {
+            lines.push(Line::raw(""));
+            lines.push(Line::from(format!("Resuming in {n}...").yellow().bold()));
+        }
+
+        Paragraph::new(lines).render(inner, buf);
+    }
+}
+
+/// Bottom status/input line -- replaces the old blocking `read_line()`
+/// prompts for `J`/`G` with a live, cancellable, backspace-able editor
+/// rendered as part of the normal frame. Also carries the 3-2-1
+/// slideshow-resume countdown when there's no sidebar to show it in
+/// (`--no-info` or a too-narrow terminal) -- the sidebar is the normal
+/// home for it (see `SidebarWidget`), this is the fallback so it's never
+/// silently invisible.
+struct StatusLineWidget<'a> {
+    app: &'a App,
+    show_countdown: bool,
+}
+
+impl Widget for StatusLineWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        if self.show_countdown
+            && let Some(n) = self.app.countdown
+        {
+            Paragraph::new(Line::from(format!("Resuming in {n}...").yellow().bold()))
+                .render(area, buf);
+            return;
+        }
+
+        let line = match &self.app.input_mode {
+            InputMode::Normal => match &self.app.status_message {
+                Some(msg) => Line::from(msg.as_str()),
+                None => Line::from("Ready. Press [Q] to quit, [S] to toggle slideshow.".dim()),
+            },
+            InputMode::JumpToChunk(buf_str) => Line::from(vec![
+                format!("Jump to chunk (1-{}): ", self.app.chunks.len()).bold(),
+                format!("{buf_str}█").into(),
+            ]),
+            InputMode::GapFillList(buf_str) => Line::from(vec![
+                "Gap-fill list (e.g. 5,12-15,40): ".bold(),
+                format!("{buf_str}█").into(),
+            ]),
+        };
+        Paragraph::new(line).render(area, buf);
+    }
+}
+
+struct TooSmallWidget {
+    term_width: u16,
+    term_height: u16,
+    min_width: u16,
+    min_height: u16,
+}
+
+impl Widget for TooSmallWidget {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let lines = vec![
+            Line::from("Error: Terminal too small".red().bold()),
+            Line::from(format!(
+                "Current: {}×{}, Minimum: {}×{}",
+                self.term_width, self.term_height, self.min_width, self.min_height
+            )),
+        ];
+        Paragraph::new(lines).render(area, buf);
+    }
+}
+
+struct NoContentWidget;
+
+impl Widget for NoContentWidget {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        Paragraph::new("No content to display.").render(area, buf);
+    }
+}
+
+/// Shown when a chunk's payload doesn't fit the chosen QR version/ECC --
+/// e.g. binary content read as lossy UTF-8 inflated past its expected byte
+/// size (see renderer::build_qr_lines's doc comment). Surfaced on screen
+/// instead of crashing the process; the slideshow can still move past this
+/// one bad frame via the normal next/prev controls.
+struct EncodeErrorWidget<'a> {
+    message: &'a str,
+}
+
+impl Widget for EncodeErrorWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let lines = vec![
+            Line::from("Error: QR encoding failed for this chunk".red().bold()),
+            Line::from(self.message),
+            Line::from(
+                "Try a smaller --multi, higher terminal size, or --base64 for binary input.".dim(),
+            ),
+        ];
+        Paragraph::new(lines).render(area, buf);
+    }
+}
+
+/// Top-level render dispatch: builds the layout (QR grid + optional
+/// sidebar, matching the old side-by-side-or-below fallback) and renders
+/// each region's widget. Called once per frame from the event loop in
+/// `main.rs`, wrapped in DEC synchronized-output markers there (ratatui has
+/// no built-in support for that -- see docs/adr/0004 and this session's
+/// plan for why the markers are written directly around `terminal.draw`).
+pub fn render(frame: &mut Frame, app: &App) {
+    let area = frame.area();
+    const MIN_WIDTH: u16 = 40;
+    const MIN_HEIGHT: u16 = 24;
+
+    if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
+        frame.render_widget(
+            TooSmallWidget {
+                term_width: area.width,
+                term_height: area.height,
+                min_width: MIN_WIDTH,
+                min_height: MIN_HEIGHT,
+            },
+            area,
+        );
+        return;
+    }
+
+    if app.chunks.is_empty() || app.index >= app.chunks.len() {
+        frame.render_widget(NoContentWidget, area);
+        return;
+    }
+
+    let multi_qr = app.effective_multi_qr(area.width, area.height);
+    let codes_to_render = (multi_qr as usize).min(app.chunks.len() - app.index);
+    let (cols, _rows, grid_width, grid_height) = app.grid_dimensions(codes_to_render as u32);
+
+    let mut qr_data = Vec::with_capacity(codes_to_render);
+    for idx in app.index..app.index + codes_to_render {
+        let payload = &app.chunks[idx];
+        let lines = match build_qr_lines(payload, app.options.ecc_level, app.version) {
+            Ok(lines) => lines,
+            Err(e) => {
+                frame.render_widget(
+                    EncodeErrorWidget {
+                        message: &format!("Chunk {}: {e}", idx + 1),
+                    },
+                    area,
+                );
+                return;
+            }
+        };
+        qr_data.push(QrData {
+            lines,
+            is_checksum: payload.starts_with("CHECKSUM|"),
+        });
+    }
+    let primary_is_checksum = qr_data.first().map(|d| d.is_checksum).unwrap_or(false);
+
+    // Reserve the bottom line for status/input, matching the old sidebar's
+    // "fits beside, else below, else hidden" fallback for the rest.
+    let [main_area, status_area] = Layout::new(
+        Direction::Vertical,
+        [Constraint::Min(0), Constraint::Length(1)],
+    )
+    .areas(area);
+
+    let show_sidebar = !app.options.no_info;
+    let sidebar_fits_beside = grid_width + GRID_GAP_X + SIDEBAR_WIDTH <= main_area.width;
+    let sidebar_fits_below = grid_height + GRID_GAP_Y + 3 <= main_area.height;
+
+    let (qr_area, sidebar_area) = if show_sidebar && sidebar_fits_beside {
+        let [qr, sidebar] = Layout::new(
+            Direction::Horizontal,
+            [Constraint::Min(0), Constraint::Length(SIDEBAR_WIDTH)],
+        )
+        .areas(main_area);
+        (qr, Some(sidebar))
+    } else if show_sidebar && sidebar_fits_below {
+        let [qr, sidebar] = Layout::new(
+            Direction::Vertical,
+            [Constraint::Length(grid_height), Constraint::Min(0)],
+        )
+        .areas(main_area);
+        (qr, Some(sidebar))
+    } else {
+        (main_area, None)
+    };
+
+    frame.render_widget(
+        QrGridWidget {
+            qr_data: &qr_data,
+            cols,
+            use_inverted: app.options.use_inverted,
+        },
+        qr_area,
+    );
+
+    let countdown_shown_in_sidebar = sidebar_area.is_some();
+    if let Some(sidebar_area) = sidebar_area {
+        frame.render_widget(
+            SidebarWidget {
+                app,
+                primary_is_checksum,
+                codes_rendered: codes_to_render,
+            },
+            sidebar_area,
+        );
+    }
+
+    frame.render_widget(
+        StatusLineWidget {
+            app,
+            show_countdown: !countdown_shown_in_sidebar,
+        },
+        status_area,
+    );
+}
+
+/// Formats a duration as `H:MM:SS`, or `M:SS` under an hour -- matches the
+/// existing ETA field's plain-seconds simplicity without needing a duration
+/// formatting crate for one sidebar line.
+fn format_duration(d: std::time::Duration) -> String {
+    let total_secs = d.as_secs();
+    let hours = total_secs / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let seconds = total_secs % 60;
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
+}
