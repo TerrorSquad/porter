@@ -5,6 +5,8 @@
 //! (module -> character mapping); how the resulting lines get placed on
 //! screen is `tui.rs`'s concern (a ratatui `Buffer`, not cursor escapes).
 
+use qrcode::bits::Bits;
+use qrcode::types::QrResult;
 use qrcode::{Color, QrCode, Version};
 
 use crate::qrtypes::EccLevel;
@@ -13,6 +15,34 @@ const QR_WHITE_ALL: char = '█';
 const QR_WHITE_BLACK: char = '▀';
 const QR_BLACK_WHITE: char = '▄';
 const QR_BLACK_ALL: char = ' ';
+
+/// Encodes `payload` in a single Byte-mode segment at the given version.
+///
+/// Deliberately *not* `QrCode::with_version`, which runs the crate's optimal
+/// segmentation: that splits the payload into numeric/alphanumeric/byte runs,
+/// and for mixed content (digits + punctuation + newlines -- i.e. every real
+/// chunk) the per-segment mode and count headers can cost more bits than one
+/// plain Byte segment. The result was payloads well under the table capacity
+/// still failing: at version 9 the tables allow 230 bytes and symbols peaked
+/// at 224, yet ~2% of them were rejected, with no length that reliably
+/// predicted which. The capacity tables in `constants` are Byte-mode maxima,
+/// so forcing one Byte segment makes them exact and the sizing math sound.
+///
+/// Wire-compatible: mode selection is an encoder-side detail, and the decoded
+/// payload is byte-identical either way.
+fn encode(payload: &str, ecc_level: EccLevel, version: i32) -> QrResult<QrCode> {
+    let ec = ecc_level.to_qrcode_ec_level();
+    let mut bits = Bits::new(Version::Normal(version as i16));
+    bits.push_byte_data(payload.as_bytes())?;
+    bits.push_terminator(ec)?;
+    QrCode::with_bits(bits, ec)
+}
+
+/// Whether `payload` fits this version/ECC, via the same Byte-mode encoding
+/// used to render it.
+pub fn fits(payload: &str, ecc_level: EccLevel, version: i32) -> bool {
+    encode(payload, ecc_level, version).is_ok()
+}
 
 /// Returns the QR's half-block lines, or the `qrcode` crate's error if the
 /// payload doesn't fit the chosen version/ECC. Errors are possible even
@@ -31,11 +61,7 @@ pub fn build_qr_lines(
     ecc_level: EccLevel,
     version: i32,
 ) -> Result<Vec<String>, qrcode::types::QrError> {
-    let code = QrCode::with_version(
-        payload.as_bytes(),
-        Version::Normal(version as i16),
-        ecc_level.to_qrcode_ec_level(),
-    )?;
+    let code = encode(payload, ecc_level, version)?;
 
     let module_count = code.width();
     let colors = code.to_colors();

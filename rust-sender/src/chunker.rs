@@ -107,19 +107,106 @@ impl Chunker {
         let max_ver = (available_rows * 2 - 17 - 4) / 4;
         self.version = max_ver.clamp(1, 40);
 
-        let char_capacity = get_max_capacity(self.version, options.ecc_level);
-        let header_size: u32 = if options.add_header { 16 } else { 0 };
-        let working_capacity = char_capacity.saturating_sub(header_size);
-
-        self.chunk_size = if options.use_base64 {
-            (working_capacity as f64 * 0.75).floor() as usize
-        } else {
-            working_capacity as usize
-        };
-        if self.chunk_size == 0 {
-            self.chunk_size = 50;
+        // The CHECKSUM frame is a fixed ~78 bytes (`CHECKSUM|T|id|` + 64 hex
+        // chars), so a version chosen purely from terminal height can be too
+        // small to ever carry it -- the transfer would then send every data
+        // chunk and fail only on the final frame, with no checksum to verify
+        // against. Raise the version to fit it; the QR is then taller than
+        // the terminal, which the TUI already handles by scrolling/clipping,
+        // and that beats an unverifiable transfer.
+        if options.add_checksum {
+            let probe = format!("CHECKSUM|T|{}|{}", self.chunk_id, self.checksum);
+            while self.version < 40
+                && !crate::renderer::fits(&probe, options.ecc_level, self.version)
+            {
+                self.version += 1;
+            }
         }
 
+        let char_capacity = get_max_capacity(self.version, options.ecc_level);
+        // Header is `index|total|mode|id|`. A fixed 16-char reserve (what
+        // chunker.ts uses) underestimates it as soon as the file needs 5+
+        // digit chunk counts: at total=70965 the real header is 17 chars,
+        // so the last chunk overflows capacity and qrcode rejects it with
+        // DataTooLong. Compute the worst case instead: `total` is the
+        // widest either counter gets (index <= total), and it depends on
+        // chunk_size, which depends on the header -- so solve by iterating
+        // to a fixed point (converges in 1-2 rounds, digits only grow).
+        let header_size = |total: usize| -> u32 {
+            if !options.add_header {
+                return 0;
+            }
+            let digits = total.to_string().len() as u32;
+            // index + total + 1-char mode + 2-char id + four '|'
+            digits * 2 + 1 + self.chunk_id.len() as u32 + 4
+        };
+
+        let total_length = self.content.len();
+        let payload_capacity = |header: u32| -> usize {
+            let working = char_capacity.saturating_sub(header);
+            // ponytail: a version too small to hold even the header yields 0
+            // here, and the caller bails out rather than clamping to 1 and
+            // emitting a chunk that can't encode.
+            if options.use_base64 {
+                // base64 pads to whole 4-char groups: n raw bytes encode to
+                // 4*ceil(n/3) chars. Invert that instead of scaling by 0.75,
+                // which can round up past `working` on the final group.
+                (working as usize / 4) * 3
+            } else {
+                working as usize
+            }
+        };
+
+        let mut size = payload_capacity(header_size(1));
+        for _ in 0..4 {
+            if size == 0 {
+                break;
+            }
+            let total = total_length.div_ceil(size).max(1);
+            let next = payload_capacity(header_size(total));
+            if next == size {
+                break;
+            }
+            size = next;
+        }
+        self.chunk_size = size;
+        self.chunks.clear();
+
+        // No room for even one payload byte at this version -- emit nothing
+        // rather than chunks that can't encode. The TUI surfaces this as its
+        // "terminal too small" state instead of a per-chunk encode failure.
+        if self.chunk_size == 0 {
+            return;
+        }
+
+        // Shrink until the longest chunk fits. With Byte-mode encoding (see
+        // renderer::encode) the capacity table is exact, so the computed size
+        // is already right and this normally makes zero adjustments -- it's a
+        // cheap guard against the header estimate drifting, not the mechanism
+        // the sizing relies on. Only the longest chunk is checked: cost is
+        // monotonic in length under a single Byte segment, so if it fits,
+        // they all do.
+        for _ in 0..12 {
+            self.build_chunks(options);
+            let longest = self.chunks.iter().max_by_key(|c| c.len());
+            match longest {
+                Some(c) if !crate::renderer::fits(c, options.ecc_level, self.version) => {}
+                _ => return,
+            }
+            let Some(shrunk) = self.chunk_size.checked_sub(3).filter(|&s| s > 0) else {
+                // Can't shrink further at this version -- emit nothing rather
+                // than frames that fail mid-slideshow.
+                self.chunks.clear();
+                return;
+            };
+            self.chunk_size = shrunk;
+        }
+        // Didn't converge: don't hand back unverified chunks.
+        self.chunks.clear();
+    }
+
+    /// Slices `content` into `chunks` at the current `chunk_size`.
+    fn build_chunks(&mut self, options: &ChunkOptions) {
         self.chunks.clear();
         let total_length = self.content.len();
 
@@ -280,6 +367,46 @@ mod tests {
             provided, chunker.checksum,
             "test checksum must differ from the real computed one"
         );
+    }
+
+    /// Regression test for a live-reported crash: a fixed 16-char header
+    /// reserve underestimates `index|total|mode|id|` once the chunk count
+    /// reaches 5 digits (17 chars), so chunks overflowed the QR capacity
+    /// they were sized for and qrcode rejected them with DataTooLong.
+    /// Checks both modes at a small version, where the header is the
+    /// largest share of capacity.
+    #[test]
+    fn header_reserve_holds_for_five_digit_chunk_counts() {
+        for use_base64 in [false, true] {
+            // Big enough to need 5-digit totals at this version.
+            let content = vec![b'a'; 8_000_000];
+            let mut chunker = Chunker::new(content);
+            chunker.calculate_layout(
+                50,
+                &ChunkOptions {
+                    buffer: 10,
+                    use_base64,
+                    add_header: true,
+                    ecc_level: EccLevel::L,
+                    add_checksum: false,
+                    provided_checksum: None,
+                },
+            );
+
+            let capacity = crate::constants::get_max_capacity(chunker.version, EccLevel::L);
+            assert!(
+                chunker.chunks.len() >= 10_000,
+                "test needs a 5+ digit chunk count, got {}",
+                chunker.chunks.len()
+            );
+            for chunk in &chunker.chunks {
+                assert!(
+                    chunk.len() as u32 <= capacity,
+                    "base64={use_base64}: chunk of {} bytes exceeds capacity {capacity}",
+                    chunk.len(),
+                );
+            }
+        }
     }
 
     /// Regression test for a live-reported crash: text mode chunking at a
