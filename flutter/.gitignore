@@ -65,9 +65,11 @@ app.*.map.json
 
 # macOS
 **/macos/Flutter/GeneratedPluginRegistrant.swift
-**/macos/Flutter/Flutter-Debug.xcconfig
-**/macos/Flutter/Flutter-Release.xcconfig
-**/macos/Flutter/GeneratedPluginRegistrant.swift
+# Flutter-Debug/Release.xcconfig are NOT generated -- they are two-line stubs
+# from the macOS template that the Xcode project includes by name, and Flutter
+# tracks them. Ignoring them built fine locally (the files existed) and failed
+# on any clean checkout with "could not find included file". Only the
+# ephemeral/ directory below is actually generated per-build.
 **/macos/Flutter/ephemeral/
 **/macos/Pods/
 
