@@ -101,6 +101,22 @@ void main() {
       expect(t.chunks.length, 1);
     });
 
+    test('a duplicate scan still fires onProgress, so a resumed transfer '
+        'surfaces as active even before any new chunk arrives', () {
+      final progressed = <String>[];
+      final assembler = Assembler(onProgress: (t) => progressed.add(t.id));
+
+      // Simulate a hydrated transfer: index 1 already seen, nothing ingested
+      // through this Assembler instance yet.
+      final transfer = assembler.getOrCreate('AB', 2, 'T');
+      transfer.markSeen(1);
+
+      // Re-scanning the already-seen chunk is a no-op for state...
+      expect(assembler.ingest('1|2|T|AB|Hello'), false);
+      // ...but still reports which transfer is being actively scanned.
+      expect(progressed, ['AB']);
+    });
+
     test('decompresses gzip-mode payloads', () {
       final original = utf8.encode('Hello, gzip world! ' * 5);
       final compressed = GZipEncoder().encode(original)!;

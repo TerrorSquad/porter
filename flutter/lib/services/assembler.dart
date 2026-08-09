@@ -83,7 +83,14 @@ class Assembler {
       final transfer = getOrCreate(parsed.id, parsed.total, parsed.mode);
       if (parsed.total > transfer.total) transfer.total = parsed.total;
       if (transfer.isComplete) return false;
-      if (transfer.seenIndices.contains(parsed.index)) return false;
+      if (transfer.seenIndices.contains(parsed.index)) {
+        // Still a no-op for state, but tells the UI which transfer is
+        // actively being scanned — otherwise a resumed transfer whose next
+        // few scans all happen to be already-hydrated chunks would never
+        // surface as the active transfer until a genuinely new chunk lands.
+        onProgress?.call(transfer);
+        return false;
+      }
 
       final payload = _decodePayload(parsed.mode, parsed.payload);
       transfer.addChunk(parsed.index, payload);

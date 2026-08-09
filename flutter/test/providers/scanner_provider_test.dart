@@ -118,6 +118,13 @@ void main() {
       // scanning happens in this session.
       expect(resumed.activeTransfer, null);
 
+      // Re-scanning an already-hydrated chunk is a duplicate for state, but
+      // must still surface the transfer as active — otherwise a resumed
+      // transfer whose next few scans all happen to already be hydrated
+      // would appear to do nothing on screen.
+      resumed.ingestQR('1|3|T|AB|One', outputDirectory: tmpDir.path);
+      await waitFor(() => resumed.activeTransfer?.id == 'AB');
+
       // Scanning the missing chunk completes the transfer using only new
       // information — no re-scan of chunks 1/2 was needed.
       String? completedId;
