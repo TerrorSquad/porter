@@ -247,7 +247,7 @@ void main() {
       // displayProgress reflects symbols against the ~1.5K needed to decode,
       // not the (still tiny) recovered count — and not K, which overstated
       // progress badly on large transfers.
-      expect(t.displayProgress, closeTo(5 / (k * 2), 1e-9));
+      expect(t.displayProgress, closeTo(5 / (t.missingBlocks * 2), 1e-9));
     });
 
     test('decodes the nodejs cross-language fixture through ingest', () {

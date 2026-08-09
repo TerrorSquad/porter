@@ -51,8 +51,13 @@ void main() {
       expect(completed.snapshot.isComplete, true);
       expect(utf8.decode(completed.assembled!), 'Hello,World');
 
+      // Chunk writes are fire-and-forget: onChunkReceived kicks off the
+      // write and completion can be posted before it lands, so asserting
+      // existence immediately is a race (failed ~1 run in 10). Wait for the
+      // write instead of assuming it has already happened.
       final chunkFile = File('${tmpDir.path}/AB/chunks/chunk_000001.bin');
-      expect(await chunkFile.exists(), true);
+      await waitFor(chunkFile.existsSync);
+      expect(chunkFile.existsSync(), true);
     });
 
     test('decodes a nodejs cross-language fountain fixture', () async {

@@ -72,9 +72,31 @@ void main() {
       // Sequential progress would show ~1%. Fountain scales symbols against
       // the ~1.5K actually needed to decode, not K: dividing by K showed
       // ~99% while a third of the scanning remained, which read as a hang.
-      expect(t.fountainSymbolsNeeded, 200);
-      expect(t.displayProgress, closeTo(40 / 200, 1e-9));
-      expect(t.progressLabel, '40 / 200 symbols · 1 / 100 blocks decoded');
+      // Scaled to the blocks still missing (99 of 100), not all of K.
+      expect(t.fountainSymbolsNeeded, 198);
+      expect(t.displayProgress, closeTo(40 / 198, 1e-9));
+      expect(t.progressLabel, '40 / 198 symbols · 1 / 100 blocks decoded');
+    });
+
+
+    test('a resumed transfer is not charged for blocks already on disk', () {
+      // Reproduces a real resume: 36% of blocks recovered from disk, symbol
+      // count restarted. Charging 2x the *whole* K implied ~13 hours left
+      // when most of that work was already done and saved.
+      final t = Transfer(id: 'RS')
+        ..encoding = 'fountain'
+        ..total = 70965
+        ..fountainSymbols = 25190;
+      for (var i = 1; i <= 25853; i++) {
+        t.markSeen(i);
+      }
+
+      expect(t.missingBlocks, 70965 - 25853);
+      expect(t.fountainSymbolsNeeded, (70965 - 25853) * 2);
+      expect(t.fountainSymbolsNeeded, lessThan(70965 * 2),
+          reason: 'resumed work must cost less than a cold start');
+      expect(t.displayProgress, greaterThan(25190 / (70965 * 2)),
+          reason: 'progress should reflect the blocks already recovered');
     });
 
     test('fountain displayProgress caps below 1.0 until actually complete', () {

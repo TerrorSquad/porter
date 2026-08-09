@@ -64,21 +64,40 @@ class Transfer {
     if (isComplete) return 1.0;
     if (total <= 0) return 0.0;
     if (isFountain) {
-      final frac = fountainSymbols / fountainSymbolsNeeded;
+      final needed = fountainSymbolsNeeded;
+      if (needed <= 0) return 0.99;
+      final frac = fountainSymbols / needed;
       return frac < 0.99 ? frac : 0.99;
     }
     return seenIndices.length / total;
   }
 
-  /// Distinct symbols peeling needs before it can decode, as a multiple of K.
+  /// Distinct symbols peeling needs before it can decode.
   ///
-  /// Measured end-to-end: 1.33x-1.69x for K=50..20000, and 1.89x at K=70965
-  /// (a real 115 MB transfer). Scaled to 2.0x so the bar under-promises
-  /// rather than stalling near 100% — dividing by K alone showed ~99% while a
-  /// third of the scanning remained, which is exactly what made a healthy
-  /// transfer look hung. Overshoot is harmless: the bar simply completes
-  /// early and the decode message takes over.
-  int get fountainSymbolsNeeded => total * 2;
+  /// Measured end-to-end at ~2x K from a cold start (1.33x-1.69x for
+  /// K=50..20000, 1.89x at K=70965), and scaled to 2.0x so the bar
+  /// under-promises rather than stalling near 100%.
+  ///
+  /// Scaled to the blocks still *missing*, not to all of K: on a resumed
+  /// transfer much of the file is already decoded, and charging for symbols
+  /// that would rebuild blocks sitting on disk badly overstates the work
+  /// left. Observed on a resume with 36% of blocks already recovered — the
+  /// flat 2K target implied ~13 hours remaining when most of that had
+  /// already been paid for.
+  int get fountainSymbolsNeeded {
+    final missing = total - seenIndices.length;
+    if (missing <= 0) return fountainSymbols;
+    return missing * 2;
+  }
+
+  /// Symbols collected that count toward [fountainSymbolsNeeded].
+  ///
+  /// A resumed decoder can only credit a persisted seq when every block it
+  /// covers is already recovered; the rest must be scanned again (see
+  /// `FountainDecoder.restoreSeenSeqs`). Those re-scans are real work, so
+  /// they are not counted as done — but the symbols collected *this session*
+  /// are, which is what [fountainSymbols] tracks.
+  int get fountainSymbolsCollected => fountainSymbols;
 
   /// Short progress caption, e.g. "12 / 40 chunks" (sequential) or
   /// "137 / 60 symbols · 3 / 40 blocks decoded" (fountain).
@@ -93,6 +112,10 @@ class Transfer {
     }
     return '${seenIndices.length} / $total chunks';
   }
+
+  /// Blocks still to recover. The honest measure of what is left on a
+  /// resumed transfer, where symbol counts restart but blocks do not.
+  int get missingBlocks => (total - seenIndices.length).clamp(0, total);
 
   /// Chunk indices (1-based) that have not been seen yet, in ascending order.
   List<int> get missingIndices => [
