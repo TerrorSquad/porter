@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../models/hydrated_transfer.dart';
 import '../models/transfer.dart';
@@ -52,6 +53,100 @@ class ChunkStorage {
     final chunksDir = Directory('${dir.path}/chunks');
     await chunksDir.create(recursive: true);
     await File('${chunksDir.path}/${_chunkFilename(index)}').writeAsBytes(bytes);
+  }
+
+  /// Moves the transfer's existing `chunks/` aside before an incompatible
+  /// stream starts writing into the same directory.
+  ///
+  /// A transfer directory is named after the chunk id, which is a hash of the
+  /// file's *content* — so the same file re-sent at a different QR layout
+  /// lands here again with a different block size. Left in place, the two
+  /// sets interleave and the directory decodes to nothing (observed: 2883
+  /// blocks of 1617 bytes mixed with 995 of 2172). Renaming preserves the old
+  /// data for manual recovery instead of deleting it.
+  static Future<void> archiveChunks(
+    Transfer transfer, {
+    String? outputDirectory,
+  }) async {
+    final dir = transfer.transferDirPath ??
+        (await transferDirectory(transfer, outputDirectory: outputDirectory)).path;
+    final chunks = Directory('$dir/chunks');
+    if (!await chunks.exists()) return;
+
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    await chunks.rename('$dir/chunks_superseded_$stamp');
+    // seen_seqs describes the old layout's symbols; it must not be reused.
+    final seqs = File('$dir/seen_seqs.bin');
+    if (await seqs.exists()) {
+      await seqs.rename('$dir/seen_seqs_superseded_$stamp.bin');
+    }
+  }
+
+  /// Appends fountain symbol [seqs] to `seen_seqs.bin` as little-endian
+  /// uint32s.
+  ///
+  /// A sidecar rather than a metadata.json field: at tens of thousands of
+  /// seqs the JSON array would be hundreds of KB rewritten on every debounce
+  /// tick, whereas appending 4 bytes per new seq is O(new). Append-only, so a
+  /// process killed mid-write loses at most a trailing partial record, which
+  /// [readSeenSeqs] discards.
+  static Future<void> appendSeenSeqs(
+    Transfer transfer,
+    List<int> seqs, {
+    String? outputDirectory,
+  }) async {
+    if (seqs.isEmpty) return;
+    final dir = transfer.transferDirPath ??
+        (await transferDirectory(transfer, outputDirectory: outputDirectory)).path;
+
+    final bytes = Uint8List(seqs.length * 4);
+    final view = ByteData.view(bytes.buffer);
+    for (var i = 0; i < seqs.length; i++) {
+      view.setUint32(i * 4, seqs[i], Endian.little);
+    }
+    await File('$dir/seen_seqs.bin').writeAsBytes(bytes, mode: FileMode.append);
+  }
+
+  /// Reads the seqs recorded by [appendSeenSeqs]. A trailing partial record
+  /// (from a kill mid-append) is ignored.
+  static Future<Set<int>> readSeenSeqs(Directory transferDir) async {
+    final file = File('${transferDir.path}/seen_seqs.bin');
+    if (!await file.exists()) return {};
+
+    final bytes = await file.readAsBytes();
+    final view = ByteData.view(bytes.buffer, bytes.offsetInBytes, bytes.length);
+    final seqs = <int>{};
+    for (var i = 0; i + 4 <= bytes.length; i += 4) {
+      seqs.add(view.getUint32(i, Endian.little));
+    }
+    return seqs;
+  }
+
+  /// Synchronous [readChunk], for the fountain decoder's peeling loop, which
+  /// cannot await. Returns null if the chunk isn't on disk. Safe to block:
+  /// this only ever runs on the worker isolate.
+  static Uint8List? readChunkSync(
+    Transfer transfer,
+    int index, {
+    String? outputDirectory,
+  }) {
+    final dir = transfer.transferDirPath;
+    if (dir == null) return null;
+    final file = File('$dir/chunks/${_chunkFilename(index)}');
+    if (!file.existsSync()) return null;
+    return file.readAsBytesSync();
+  }
+
+  /// Reads back a chunk previously written by [writeChunk]. Used to page
+  /// bytes in on demand after they've been evicted from RAM.
+  static Future<List<int>> readChunk(
+    Transfer transfer,
+    int index, {
+    String? outputDirectory,
+  }) async {
+    final dir = transfer.transferDirPath ??
+        (await transferDirectory(transfer, outputDirectory: outputDirectory)).path;
+    return File('$dir/chunks/${_chunkFilename(index)}').readAsBytes();
   }
 
   /// Writes a JSON summary of [transfer]'s current state.
@@ -160,6 +255,7 @@ class ChunkStorage {
     int total = 0;
     int? fountainFileSize;
     String? checksum;
+    DateTime? createdAt;
     final metaFile = File('${transferDir.path}/metadata.json');
     if (await metaFile.exists()) {
       try {
@@ -169,6 +265,8 @@ class ChunkStorage {
         total = json['total'] as int? ?? total;
         fountainFileSize = json['fountainFileSize'] as int?;
         checksum = json['checksum'] as String?;
+        final created = json['createdAt'] as String?;
+        if (created != null) createdAt = DateTime.tryParse(created);
       } catch (_) {
         // Corrupt/partial metadata.json (e.g. killed mid-write) — proceed
         // with .bin-derived state only; total/mode/checksum are re-learned
@@ -176,8 +274,48 @@ class ChunkStorage {
       }
     }
 
+    final seenSeqs = await readSeenSeqs(transferDir);
+
+    // Fountain blocks are all exactly one block size. Take the modal size
+    // rather than the first: a directory written by two sender sessions at
+    // different QR versions holds a mix, and the majority size is the one
+    // worth resuming. Mismatched leftovers are excluded from seenIndices
+    // below so they can't corrupt the assembled output.
+    int? blockSize;
+    if (encoding == 'fountain') {
+      final counts = <int, int>{};
+      await for (final entry in chunksDir.list()) {
+        if (entry is! File) continue;
+        final len = await entry.length();
+        counts[len] = (counts[len] ?? 0) + 1;
+      }
+      if (counts.isNotEmpty) {
+        blockSize = counts.entries
+            .reduce((a, b) => a.value >= b.value ? a : b)
+            .key;
+        if (counts.length > 1) {
+          // Drop indices whose chunk isn't the modal size — they belong to a
+          // different (undecodable) stream that reused this content hash.
+          final keep = <int>{};
+          await for (final entry in chunksDir.list()) {
+            if (entry is! File) continue;
+            final match =
+                _chunkFilenameRegExp.firstMatch(entry.uri.pathSegments.last);
+            if (match == null) continue;
+            if (await entry.length() == blockSize) {
+              keep.add(int.parse(match.group(1)!));
+            }
+          }
+          seenIndices.retainWhere(keep.contains);
+        }
+      }
+    }
+
     return HydratedTransfer(
       id: id,
+      seenSeqs: seenSeqs,
+      blockSize: blockSize,
+      createdAt: createdAt,
       mode: mode,
       encoding: encoding,
       total: total,

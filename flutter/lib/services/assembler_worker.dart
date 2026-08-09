@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import '../models/transfer.dart';
 import 'assembler.dart';
 import 'chunk_metadata_writer.dart';
 import 'chunk_storage.dart';
+import 'fountain_decoder.dart';
 
 // --- Messages sent TO the worker isolate ---
 
@@ -137,9 +139,88 @@ void _workerMain((RootIsolateToken, SendPort) args) {
       mainSendPort.send(ChunkBytesEvent(bytes));
     },
   );
+  // Fountain seqs are appended in batches: at ~9 scans/s a syscall per seq is
+  // pure overhead, and losing the tail of the batch on a kill only costs a
+  // rescan of those few symbols.
+  final pendingSeqs = <String, List<int>>{};
+  final seqTransfers = <String, Transfer>{};
+  Timer? seqFlushTimer;
+
+  Future<void> flushSeqs() async {
+    if (pendingSeqs.isEmpty) return;
+    final batches = Map.of(pendingSeqs);
+    pendingSeqs.clear();
+    for (final entry in batches.entries) {
+      final t = seqTransfers[entry.key];
+      if (t == null) continue;
+      try {
+        await ChunkStorage.appendSeenSeqs(t, entry.value,
+            outputDirectory: outputDirectory);
+      } catch (e) {
+        mainSendPort.send(PersistErrorEvent(entry.key, 'Failed to save seqs for ${entry.key}: $e'));
+      }
+    }
+  }
+
+  final spills = <String, SymbolSpill>{};
+  assembler.createSpill = (t) {
+    final dir = t.transferDirPath;
+    if (dir == null) return null; // no directory resolved yet; stay in RAM
+    try {
+      final spill = FileSymbolSpill(File('$dir/pending_symbols.bin'));
+      spills[t.id] = spill;
+      return spill;
+    } catch (e) {
+      // Can't open the spill file (permissions, full disk) — fall back to the
+      // in-RAM pool rather than failing the transfer outright.
+      mainSendPort.send(PersistErrorEvent(t.id, 'Spill unavailable for ${t.id}: $e'));
+      return null;
+    }
+  };
+
+  assembler.readBlock = (t, index) =>
+      ChunkStorage.readChunkSync(t, index, outputDirectory: outputDirectory);
+
+  assembler.onLayoutSwitched = (t, oldK, newK) {
+    // The sender restarted at a different QR layout (usually a terminal
+    // resize). The chunks already on disk belong to the old, undecodable
+    // stream — move them aside so the new one writes into a clean directory
+    // instead of interleaving block sizes.
+    spills.remove(t.id)?.dispose();
+    pendingSeqs.remove(t.id);
+    ChunkStorage.archiveChunks(t, outputDirectory: outputDirectory).catchError((Object e) {
+      mainSendPort.send(PersistErrorEvent(t.id, 'Could not archive old chunks for ${t.id}: $e'));
+    });
+    mainSendPort.send(PersistErrorEvent(t.id,
+        'Sender layout changed (K $oldK -> $newK); restarted ${t.id}. '
+        'Earlier blocks kept in chunks_superseded_*.'));
+  };
+
+  assembler.onFountainSeqSeen = (t, seq) {
+    seqTransfers[t.id] = t;
+    (pendingSeqs[t.id] ??= <int>[]).add(seq);
+    seqFlushTimer ??= Timer(const Duration(seconds: 2), () {
+      seqFlushTimer = null;
+      flushSeqs();
+    });
+  };
+
   assembler.onChunkReceived = (t, index, bytes) {
     ChunkStorage.writeChunk(t, index, bytes, outputDirectory: outputDirectory).then((_) {
       writerFor(t).markDirty();
+      // The bytes are durably on disk now, so the in-RAM copy is redundant.
+      // Dropping it keeps a large transfer's footprint flat instead of
+      // growing to the whole file: at K=70965 retaining every chunk is
+      // gigabytes. The index stays marked seen, and `chunkReader` pages the
+      // bytes back at assembly time — the same path a resumed transfer uses.
+      //
+      // Only above the threshold: for a small transfer the eviction races
+      // assembly (this callback is async, and _assemble may already be
+      // reading `chunks`) for no benefit, since a few MB in RAM is free.
+      if (t.total >= kEvictChunkBytesAboveTotal) {
+        t.evictChunkBytes(index, readVia: (i) =>
+            ChunkStorage.readChunk(t, i, outputDirectory: outputDirectory));
+      }
     }).catchError((Object e) {
       mainSendPort.send(PersistErrorEvent(t.id, 'Failed to save chunk $index for ${t.id}: $e'));
     });
@@ -152,8 +233,17 @@ void _workerMain((RootIsolateToken, SendPort) args) {
     } else if (message is _ResetRequest) {
       assembler.reset(message.id);
       if (message.id != null) {
+        pendingSeqs.remove(message.id);
+        seqTransfers.remove(message.id);
+        spills.remove(message.id)?.dispose();
         metadataWriters.remove(message.id)?.dispose();
       } else {
+        pendingSeqs.clear();
+        seqTransfers.clear();
+        for (final s in spills.values) {
+          s.dispose();
+        }
+        spills.clear();
         for (final w in metadataWriters.values) {
           w.dispose();
         }
@@ -165,6 +255,9 @@ void _workerMain((RootIsolateToken, SendPort) args) {
       for (final w in metadataWriters.values) {
         unawaited(w.flush());
       }
+      seqFlushTimer?.cancel();
+      seqFlushTimer = null;
+      unawaited(flushSeqs());
     } else if (message is _HydrateFromDisk) {
       // Also adopt this as the working outputDirectory: a transfer that
       // turns out to already be complete gets assembled/written during

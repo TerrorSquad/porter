@@ -23,6 +23,20 @@ class HydratedTransfer {
   /// index, at assembly time.
   final Future<List<int>> Function(int index) readChunk;
 
+  /// Fountain symbol seqs already ingested before the restart, so a resumed
+  /// decoder can skip re-scanning symbols whose blocks are already on disk.
+  /// Empty for sequential transfers.
+  final Set<int> seenSeqs;
+
+  /// Size of one persisted chunk, i.e. the fountain block size this transfer
+  /// was recorded at. Null when unknown (no chunks yet, or sequential).
+  final int? blockSize;
+
+  /// When the transfer originally started, read back from metadata.json.
+  /// Null if unknown (missing/corrupt metadata), in which case the resumed
+  /// transfer keeps its own creation time.
+  final DateTime? createdAt;
+
   const HydratedTransfer({
     required this.id,
     required this.mode,
@@ -33,5 +47,8 @@ class HydratedTransfer {
     required this.transferDirPath,
     required this.seenIndices,
     required this.readChunk,
+    this.seenSeqs = const {},
+    this.blockSize,
+    this.createdAt,
   });
 }

@@ -64,17 +64,32 @@ class Transfer {
     if (isComplete) return 1.0;
     if (total <= 0) return 0.0;
     if (isFountain) {
-      final frac = fountainSymbols / total;
+      final frac = fountainSymbols / fountainSymbolsNeeded;
       return frac < 0.99 ? frac : 0.99;
     }
     return seenIndices.length / total;
   }
 
+  /// Distinct symbols peeling needs before it can decode, as a multiple of K.
+  ///
+  /// Measured end-to-end: 1.33x-1.69x for K=50..20000, and 1.89x at K=70965
+  /// (a real 115 MB transfer). Scaled to 2.0x so the bar under-promises
+  /// rather than stalling near 100% — dividing by K alone showed ~99% while a
+  /// third of the scanning remained, which is exactly what made a healthy
+  /// transfer look hung. Overshoot is harmless: the bar simply completes
+  /// early and the decode message takes over.
+  int get fountainSymbolsNeeded => total * 2;
+
   /// Short progress caption, e.g. "12 / 40 chunks" (sequential) or
-  /// "137 symbols · 3 / 40 blocks" (fountain).
+  /// "137 / 60 symbols · 3 / 40 blocks decoded" (fountain).
+  ///
+  /// Leads with symbols against the count actually needed: blocks stay near
+  /// zero until a late avalanche, so showing blocks first made a healthy
+  /// transfer look frozen.
   String get progressLabel {
     if (isFountain) {
-      return '$fountainSymbols symbols · ${seenIndices.length} / $total blocks';
+      return '$fountainSymbols / $fountainSymbolsNeeded symbols · '
+          '${seenIndices.length} / $total blocks decoded';
     }
     return '${seenIndices.length} / $total chunks';
   }
@@ -104,6 +119,30 @@ class Transfer {
   /// read lazily via [chunkReader] only if/when this transfer is assembled.
   void markSeen(int index) => seenIndices.add(index);
 
+  /// Releases [index]'s in-RAM bytes now that they are durably persisted,
+  /// wiring [readVia] as the lazy source so assembly can page them back.
+  ///
+  /// Without this a large transfer holds the entire file in memory while it
+  /// is still being received, on top of what the fountain decoder retains.
+  /// [receivedBytes] is deliberately not adjusted — it counts bytes received,
+  /// not bytes resident.
+  void evictChunkBytes(
+    int index, {
+    required Future<List<int>> Function(int index) readVia,
+  }) {
+    // Assembly reads `chunks` directly and only falls back to `chunkReader`
+    // per missing index. Evicting while it is mid-read is a race: the write
+    // that triggered this is async, so a chunk can vanish between the read
+    // of one index and the next.
+    if (assembling) return;
+    // Wire the reader up front, so a chunk evicted now is still reachable.
+    chunkReader ??= readVia;
+    chunks.remove(index);
+  }
+
+  /// True while `_assemble` is walking `chunks`; see [evictChunkBytes].
+  bool assembling = false;
+
   /// Updates every display-relevant field from a [ProgressSnapshot] posted
   /// by the worker isolate. Never touches [chunks]/[assembled] — this
   /// transfer instance is a lightweight main-isolate mirror; the real bytes
@@ -119,6 +158,11 @@ class Transfer {
     checksum = s.checksum;
     verified = s.verified;
     error = s.error;
+    // The worker owns the real start time. A main-isolate mirror is
+    // constructed when the UI first hears about the transfer — at app launch
+    // for hydrated ones — so without this every transfer showed the same
+    // "elapsed", counted from when the UI happened to build its mirror.
+    createdAt = s.createdAt;
     completedAt = s.completedAt;
   }
 
