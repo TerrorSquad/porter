@@ -168,4 +168,76 @@ void main() {
       expect(stopwatch.elapsedMilliseconds, lessThan(3000));
     });
   });
+
+  group('seen_seqs sidecar', () {
+    test('round-trips appended seqs and tolerates a truncated tail', () async {
+      final dir = await Directory.systemTemp.createTemp('porter_seqs');
+      addTearDown(() => dir.delete(recursive: true));
+
+      final transfer = Transfer(id: 'abc')..transferDirPath = dir.path;
+      await ChunkStorage.appendSeenSeqs(transfer, [1, 2, 70000]);
+      await ChunkStorage.appendSeenSeqs(transfer, [4294967295]);
+
+      expect(await ChunkStorage.readSeenSeqs(dir), {1, 2, 70000, 4294967295});
+
+      // Simulate a kill mid-append: a trailing partial uint32 is ignored.
+      final f = File('${dir.path}/seen_seqs.bin');
+      await f.writeAsBytes([0xAA, 0xBB], mode: FileMode.append);
+      expect(await ChunkStorage.readSeenSeqs(dir), {1, 2, 70000, 4294967295});
+    });
+  });
+
+  group('layout-change recovery', () {
+    test('archiveChunks moves the old stream aside, keeping its data', () async {
+      final dir = await Directory.systemTemp.createTemp('porter_arch');
+      addTearDown(() => dir.delete(recursive: true));
+      final t = Transfer(id: 'ar');
+      // writeChunk resolves <outputDirectory>/<id>/ and records it on the
+      // transfer, so let it establish transferDirPath rather than presuming.
+      await ChunkStorage.writeChunk(t, 1, List.filled(40, 7),
+          outputDirectory: dir.path);
+      final tdir = Directory(t.transferDirPath!);
+      await ChunkStorage.appendSeenSeqs(t, [1, 2, 3]);
+      await ChunkStorage.archiveChunks(t, outputDirectory: dir.path);
+
+      expect(Directory('${tdir.path}/chunks').existsSync(), false);
+      final archived = tdir
+          .listSync()
+          .whereType<Directory>()
+          .where((d) => d.path.contains('chunks_superseded_'));
+      expect(archived, hasLength(1),
+          reason: 'old blocks must be preserved, not deleted');
+      expect(File('${tdir.path}/seen_seqs.bin').existsSync(), false,
+          reason: 'old seqs describe the old layout and must not be reused');
+    });
+
+    /// Reproduces the directory that actually broke: two sender sessions at
+    /// different QR versions wrote into one content-hashed folder, leaving
+    /// 1617- and 2172-byte blocks interleaved. Hydration must resume the
+    /// majority layout and ignore the rest rather than assembling garbage.
+    test('hydration keeps only the modal block size in a mixed directory',
+        () async {
+      final base = await Directory.systemTemp.createTemp('porter_mixed');
+      addTearDown(() => base.delete(recursive: true));
+      final chunks = Directory('${base.path}/1e/chunks')
+        ..createSync(recursive: true);
+
+      for (var i = 1; i <= 30; i++) {
+        File('${chunks.path}/chunk_${i.toString().padLeft(6, '0')}.bin')
+            .writeAsBytesSync(List.filled(1617, 1));
+      }
+      for (var i = 31; i <= 40; i++) {
+        File('${chunks.path}/chunk_${i.toString().padLeft(6, '0')}.bin')
+            .writeAsBytesSync(List.filled(2172, 2));
+      }
+      File('${base.path}/1e/metadata.json').writeAsStringSync(
+          '{"id":"1e","encoding":"fountain","mode":"B","total":100}');
+
+      final hydrated = await ChunkStorage.hydrateAll(outputDirectory: base.path);
+      expect(hydrated, hasLength(1));
+      expect(hydrated.single.blockSize, 1617);
+      expect(hydrated.single.seenIndices, hasLength(30),
+          reason: 'the 10 foreign-sized blocks must not be credited');
+    });
+  });
 }

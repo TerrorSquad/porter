@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -212,6 +213,306 @@ void main() {
       final actualSha = sha256.convert(assembled).toString();
       expect(actualSha, expectedSha);
       expect(actualSha, checksum);
+    });
+  });
+
+  group('large-K behaviour', () {
+    /// The receiver holds one blockSize buffer per pending symbol. Boxed
+    /// `List<int>` costs ~8 bytes per byte in the Dart VM, so at tens of
+    /// thousands of pending symbols that pool was the receiver's dominant
+    /// allocation (measured 158 MB vs 56 MB at K=20000). Pending buffers must
+    /// stay typed; this guards the decode path that produces them.
+    test('decodes exactly at a K large enough to stress the pending pool', () {
+      const k = 3000;
+      const blockSize = 61;
+      final table = buildDegreeTable(k);
+      final source = List.generate(k, (i) {
+        final b = Uint8List(blockSize);
+        for (var x = 0; x < blockSize; x++) {
+          b[x] = (i * 31 + x * 7) & 0xff;
+        }
+        return b;
+      });
+
+      final decoder = FountainDecoder(k: k, blockSize: blockSize);
+      var seq = 0;
+      while (!decoder.isComplete && seq < k * 5) {
+        final sampled = sampleIndices(seq, k, table);
+        final symbol = Uint8List(blockSize);
+        for (final i in sampled.indices) {
+          final block = source[i - 1];
+          for (var x = 0; x < blockSize; x++) {
+            symbol[x] ^= block[x];
+          }
+        }
+        decoder.addSymbol(seq, symbol);
+        seq++;
+      }
+
+      expect(decoder.isComplete, true,
+          reason: 'peeling stalled after $seq symbols for K=$k');
+      expect(decoder.assemble(), [for (final b in source) ...b]);
+    });
+  });
+
+  group('resumption', () {
+    /// A restart loses the pending pool but keeps recovered blocks on disk.
+    /// Replaying the persisted seq set must (a) skip symbols that are pure
+    /// duplicates of recovered data, and (b) NOT skip symbols whose only
+    /// contribution was to the lost pending pool — marking those seen would
+    /// drop them permanently and could stall the decode.
+    test('restoreSeenSeqs skips only fully-recovered seqs, and still decodes',
+        () {
+      const k = 200;
+      const blockSize = 32;
+      final table = buildDegreeTable(k);
+      final source = List.generate(k, (i) {
+        final b = Uint8List(blockSize);
+        for (var x = 0; x < blockSize; x++) {
+          b[x] = (i * 17 + x * 3) & 0xff;
+        }
+        return b;
+      });
+      Uint8List symbolFor(int seq) {
+        final out = Uint8List(blockSize);
+        for (final i in sampleIndices(seq, k, table).indices) {
+          final b = source[i - 1];
+          for (var x = 0; x < blockSize; x++) {
+            out[x] ^= b[x];
+          }
+        }
+        return out;
+      }
+
+      // Session 1: partial progress, then "crash".
+      final first = FountainDecoder(k: k, blockSize: blockSize);
+      var seq = 0;
+      while (seq < 120) {
+        first.addSymbol(seq, symbolFor(seq));
+        seq++;
+      }
+      expect(first.isComplete, false, reason: 'need a partial state to resume');
+      final persistedSeqs = first.seenSeqs.toList();
+      final onDisk = {
+        for (var i = 1; i <= k; i++)
+          if (!first.missingIndices.contains(i)) i: source[i - 1],
+      };
+      expect(onDisk, isNotEmpty, reason: 'need recovered blocks to resume from');
+
+      // Session 2: fresh decoder seeded from what survived.
+      final resumed = FountainDecoder(k: k, blockSize: blockSize)
+        ..restoreSeenSeqs(persistedSeqs, onDisk);
+      expect(resumed.recoveredCount, onDisk.length);
+      expect(resumed.symbolCount, lessThan(persistedSeqs.length),
+          reason: 'seqs covering unrecovered blocks must be rescannable');
+
+      // Continuing the scan must still reach a byte-exact result.
+      while (!resumed.isComplete && seq < k * 6) {
+        resumed.addSymbol(seq, symbolFor(seq));
+        seq++;
+      }
+      expect(resumed.isComplete, true, reason: 'resumed decode stalled');
+      expect(resumed.assemble(), [for (final b in source) ...b]);
+    });
+  });
+
+  group('endgame performance', () {
+    /// The decode burst used to be quadratic: every peel rescanned the whole
+    /// pending pool, so at K=70965 throughput collapsed from ~190k symbols/s
+    /// to 64/s, with single cascades blocking the isolate for 15-78 seconds.
+    /// A reverse index (block -> dependent symbols) makes each peel touch only
+    /// the affected symbols. Guards the complexity, not a wall-clock target:
+    /// the bound is generous enough not to flake on slow CI.
+    test('completes a large-K decode without a quadratic blowup', () {
+      const k = 30000;
+      const blockSize = 16;
+      final table = buildDegreeTable(k);
+      final source = List.generate(k, (i) {
+        final b = Uint8List(blockSize);
+        for (var x = 0; x < blockSize; x++) {
+          b[x] = (i + x) & 0xff;
+        }
+        return b;
+      });
+
+      final decoder = FountainDecoder(k: k, blockSize: blockSize);
+      final sw = Stopwatch()..start();
+      var seq = 0;
+      while (!decoder.isComplete && seq < k * 4) {
+        final symbol = Uint8List(blockSize);
+        for (final i in sampleIndices(seq, k, table).indices) {
+          final block = source[i - 1];
+          for (var x = 0; x < blockSize; x++) {
+            symbol[x] ^= block[x];
+          }
+        }
+        decoder.addSymbol(seq, symbol);
+        seq++;
+      }
+      sw.stop();
+
+      expect(decoder.isComplete, true, reason: 'decode stalled at seq $seq');
+      expect(decoder.assemble(), [for (final b in source) ...b]);
+      expect(sw.elapsed, lessThan(const Duration(seconds: 30)),
+          reason: 'K=$k took ${sw.elapsedMilliseconds}ms — endgame looks '
+              'quadratic again');
+    });
+  });
+
+  group('spilling to disk', () {
+    /// The pending pool is the receiver's dominant allocation and grows with
+    /// K: projected ~2.6 GB for a 1 GB file, which OOMs a phone. Spilling
+    /// bounds it. Correctness must be identical to the in-RAM path, so this
+    /// runs with a tiny resident cap to force constant eviction and page-in.
+    test('decodes byte-exactly with almost everything evicted', () async {
+      const k = 400;
+      const blockSize = 24;
+      final dir = await Directory.systemTemp.createTemp('porter_spill');
+      addTearDown(() => dir.delete(recursive: true));
+
+      final table = buildDegreeTable(k);
+      final source = List.generate(k, (i) {
+        final b = Uint8List(blockSize);
+        for (var x = 0; x < blockSize; x++) {
+          b[x] = (i * 13 + x * 5) & 0xff;
+        }
+        return b;
+      });
+
+      final spill = FileSymbolSpill(File('${dir.path}/pending.bin'));
+      addTearDown(spill.dispose);
+
+      final decoder = FountainDecoder(
+        k: k,
+        blockSize: blockSize,
+        spill: spill,
+        maxResidentSymbols: 8, // force near-total eviction
+      );
+
+      var seq = 0;
+      while (!decoder.isComplete && seq < k * 6) {
+        final symbol = Uint8List(blockSize);
+        for (final i in sampleIndices(seq, k, table).indices) {
+          final block = source[i - 1];
+          for (var x = 0; x < blockSize; x++) {
+            symbol[x] ^= block[x];
+          }
+        }
+        decoder.addSymbol(seq, symbol);
+        seq++;
+      }
+
+      expect(decoder.isComplete, true, reason: 'spilled decode stalled');
+      expect(decoder.assemble(), [for (final b in source) ...b]);
+    });
+
+    test('matches the in-RAM decoder exactly, symbol for symbol', () async {
+      const k = 300;
+      const blockSize = 16;
+      final dir = await Directory.systemTemp.createTemp('porter_spill_cmp');
+      addTearDown(() => dir.delete(recursive: true));
+
+      final table = buildDegreeTable(k);
+      final source = List.generate(k, (i) {
+        final b = Uint8List(blockSize);
+        for (var x = 0; x < blockSize; x++) {
+          b[x] = (i ^ x) & 0xff;
+        }
+        return b;
+      });
+      Uint8List symbolFor(int seq) {
+        final out = Uint8List(blockSize);
+        for (final i in sampleIndices(seq, k, table).indices) {
+          final block = source[i - 1];
+          for (var x = 0; x < blockSize; x++) {
+            out[x] ^= block[x];
+          }
+        }
+        return out;
+      }
+
+      final spill = FileSymbolSpill(File('${dir.path}/pending.bin'));
+      addTearDown(spill.dispose);
+      final spilled = FountainDecoder(
+        k: k,
+        blockSize: blockSize,
+        spill: spill,
+        maxResidentSymbols: 4,
+      );
+      final inRam = FountainDecoder(k: k, blockSize: blockSize);
+
+      for (var seq = 0; seq < k * 3; seq++) {
+        final symbol = symbolFor(seq);
+        final a = spilled.addSymbol(seq, Uint8List.fromList(symbol));
+        final b = inRam.addSymbol(seq, Uint8List.fromList(symbol));
+        expect(a.map((r) => r.index).toSet(), b.map((r) => r.index).toSet(),
+            reason: 'divergence at seq $seq');
+        if (inRam.isComplete) break;
+      }
+
+      expect(spilled.isComplete, inRam.isComplete);
+      expect(spilled.assemble(), inRam.assemble());
+    });
+  });
+
+  group('resuming against blocks that live only on disk', () {
+    /// After a hydrate, `transfer.chunks` is empty — indices are marked seen
+    /// and bytes are read lazily. Seeding the decoder from that empty map
+    /// left it with zero recovered blocks, so the blocks already on disk
+    /// could never contribute and the transfer could not finish. Indices must
+    /// be credited directly, with blockLoader paging the bytes in.
+    test('credits disk-only indices and completes', () {
+      const k = 200;
+      const blockSize = 24;
+      final table = buildDegreeTable(k);
+      final source = List.generate(k, (i) {
+        final b = Uint8List(blockSize);
+        for (var x = 0; x < blockSize; x++) {
+          b[x] = (i * 7 + x) & 0xff;
+        }
+        return b;
+      });
+      Uint8List symbolFor(int seq) {
+        final out = Uint8List(blockSize);
+        for (final i in sampleIndices(seq, k, table).indices) {
+          final b = source[i - 1];
+          for (var x = 0; x < blockSize; x++) {
+            out[x] ^= b[x];
+          }
+        }
+        return out;
+      }
+
+      // Pretend the first 120 blocks were recovered in an earlier session and
+      // exist only on disk.
+      final onDisk = {for (var i = 1; i <= 120; i++) i: source[i - 1]};
+      var loads = 0;
+
+      final resumed = FountainDecoder(
+        k: k,
+        blockSize: blockSize,
+        blockLoader: (index) {
+          loads++;
+          return onDisk[index];
+        },
+      )..restoreSeenSeqs(
+          const <int>[],
+          const {}, // nothing in RAM, exactly like a fresh hydrate
+          recoveredIndices: onDisk.keys,
+        );
+
+      expect(resumed.recoveredCount, 120,
+          reason: 'disk-only blocks must count as recovered');
+
+      var seq = 0;
+      while (!resumed.isComplete && seq < k * 6) {
+        resumed.addSymbol(seq, symbolFor(seq));
+        seq++;
+      }
+
+      expect(resumed.isComplete, true, reason: 'resumed decode stalled');
+      expect(loads, greaterThan(0), reason: 'blockLoader should be used');
+      expect(resumed.assemble(), [for (final b in source) ...b]);
     });
   });
 }

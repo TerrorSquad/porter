@@ -69,9 +69,12 @@ void main() {
         ..fountainSymbols = 40;
       t.addChunk(1, [1]); // only 1 block recovered so far
 
-      // Sequential progress would show ~1%; fountain shows ~40% (symbols/K).
-      expect(t.displayProgress, closeTo(0.40, 1e-9));
-      expect(t.progressLabel, '40 symbols · 1 / 100 blocks');
+      // Sequential progress would show ~1%. Fountain scales symbols against
+      // the ~1.5K actually needed to decode, not K: dividing by K showed
+      // ~99% while a third of the scanning remained, which read as a hang.
+      expect(t.fountainSymbolsNeeded, 200);
+      expect(t.displayProgress, closeTo(40 / 200, 1e-9));
+      expect(t.progressLabel, '40 / 200 symbols · 1 / 100 blocks decoded');
     });
 
     test('fountain displayProgress caps below 1.0 until actually complete', () {

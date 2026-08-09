@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -243,8 +244,10 @@ void main() {
       final t = assembler.transfers['SP']!;
       expect(t.fountainSymbols, 5);
       expect(progressCalls, 5);
-      // displayProgress reflects symbols/K, not the (still tiny) recovered count.
-      expect(t.displayProgress, closeTo(5 / k, 1e-9));
+      // displayProgress reflects symbols against the ~1.5K needed to decode,
+      // not the (still tiny) recovered count — and not K, which overstated
+      // progress badly on large transfers.
+      expect(t.displayProgress, closeTo(5 / (k * 2), 1e-9));
     });
 
     test('decodes the nodejs cross-language fixture through ingest', () {
@@ -337,6 +340,71 @@ void main() {
         expect(completed!.verified, true);
         expect(completed!.assembled, content);
       });
+    });
+  });
+
+  group('sender layout changes', () {
+    String sym(int seq, int k, int blockSize, {String id = 'LC'}) =>
+        'F|$seq|$k|1000|$id|${base64.encode(Uint8List(blockSize))}';
+
+    /// The chunk id is a content hash, so the same file re-sent at a
+    /// different QR version (resized terminal, different --ecc/--multi)
+    /// reuses it with a different K and block size. Those symbols index
+    /// different source blocks and must never be merged: a real transfer
+    /// directory ended up holding 2883 blocks of 1617 bytes alongside 995 of
+    /// 2172 from a session hours earlier.
+    test('rejects a few stray symbols from a different layout', () {
+      final a = Assembler();
+      final conflicts = <int>[];
+      a.onLayoutConflict = (t, oldK, newK) => conflicts.add(newK);
+
+      for (var s = 0; s < 5; s++) {
+        a.ingest(sym(s, 100, 40));
+      }
+      expect(a.transfers['LC']!.fountainSymbols, 5);
+
+      // One stray frame from the old layout still on screen.
+      a.ingest(sym(99, 60, 64));
+      expect(conflicts, [60]);
+      expect(a.transfers['LC']!.fountainSymbols, 5,
+          reason: 'progress must survive a stray mismatched frame');
+    });
+
+    test('adopts the new layout once the sender has clearly switched', () {
+      final a = Assembler();
+      final switched = <(int, int)>[];
+      a.onLayoutSwitched = (t, oldK, newK) => switched.add((oldK, newK));
+
+      for (var s = 0; s < 5; s++) {
+        a.ingest(sym(s, 100, 40));
+      }
+      for (var s = 0; s < kLayoutSwitchThreshold; s++) {
+        a.ingest(sym(s, 60, 64));
+      }
+
+      expect(switched, [(100, 60)]);
+      final t = a.transfers['LC']!;
+      expect(t.total, 60, reason: 'K should track the new layout');
+      expect(t.fountainSymbols, 1,
+          reason: 'the accepted symbol starts a fresh decoder');
+
+      // And the new layout is now the accepted one — no further conflicts.
+      var later = 0;
+      a.onLayoutConflict = (t, oldK, newK) => later++;
+      a.ingest(sym(50, 60, 64));
+      expect(later, 0);
+      expect(t.fountainSymbols, 2);
+    });
+
+    test('a consistent single-layout transfer never reports a conflict', () {
+      final a = Assembler();
+      var conflicts = 0;
+      a.onLayoutConflict = (t, oldK, newK) => conflicts++;
+      for (var s = 0; s < 30; s++) {
+        a.ingest(sym(s, 100, 40));
+      }
+      expect(conflicts, 0);
+      expect(a.transfers['LC']!.fountainSymbols, 30);
     });
   });
 }

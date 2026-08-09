@@ -149,7 +149,7 @@ void main() {
       await pumpCard(tester, transfer);
 
       // Symbol count is the headline progress signal for fountain transfers.
-      expect(find.text('7 symbols · 2 / 4 blocks'), findsOneWidget);
+      expect(find.text('7 / 8 symbols · 2 / 4 blocks decoded'), findsOneWidget);
 
       await tester.tap(find.text('Show missing ▼'));
       await tester.pump();
