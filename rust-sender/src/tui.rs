@@ -111,10 +111,35 @@ impl App {
         (self.version * 2 + 10) as u16
     }
 
-    fn grid_dimensions(&self, n: u32) -> (u16, u16, u16, u16) {
-        let n = n.max(1) as f64;
-        let cols = (n.sqrt().ceil() as u16).max(1);
-        let rows = ((n / cols as f64).ceil() as u16).max(1);
+    /// Lays `n` codes out in the widest grid the terminal can take, rather
+    /// than a square one.
+    ///
+    /// A QR is square but terminals are wide, and the QR *version* is chosen
+    /// from terminal height alone -- so height is the scarce axis and width is
+    /// usually going spare. A square grid demanded rows it could not have:
+    /// `--multi=2` asked for 2x2 at 314x159 when a 1x2 at 314x79 fits an
+    /// ordinary wide terminal, so it silently fell back to a single code and
+    /// looked like a no-op. Filling columns first spends the axis that is
+    /// actually free.
+    /// Grid for `n` codes, preferring the layout that fits `term_width`.
+    ///
+    /// Columns are tried widest-first: a single row spends only width, which
+    /// is the axis that is actually free, and taller grids are used only when
+    /// the codes genuinely will not fit side by side.
+    fn grid_dimensions_for(&self, n: u32, term_width: u16) -> (u16, u16, u16, u16) {
+        let n = n.max(1) as u16;
+        let mut chosen = (1u16, n);
+
+        for cols in (1..=n).rev() {
+            let rows = n.div_ceil(cols);
+            let width = cols * self.qr_column_width() + (cols - 1) * GRID_GAP_X;
+            if width <= term_width {
+                chosen = (cols, rows);
+                break;
+            }
+        }
+
+        let (cols, rows) = chosen;
         let width = cols * self.qr_column_width() + (cols - 1) * GRID_GAP_X;
         let height = rows * self.qr_row_height() + (rows - 1) * GRID_GAP_Y;
         (cols, rows, width, height)
@@ -124,7 +149,7 @@ impl App {
         let configured = self.options.multi_qr.unwrap_or(1);
         let mut n = configured;
         while n > 1 {
-            let (_, _, width, height) = self.grid_dimensions(n);
+            let (_, _, width, height) = self.grid_dimensions_for(n, term_width);
             if width <= term_width && height <= term_height {
                 return n;
             }
@@ -390,7 +415,10 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     let multi_qr = app.effective_multi_qr(area.width, area.height);
     let codes_to_render = (multi_qr as usize).min(app.chunks.len() - app.index);
-    let (cols, _rows, grid_width, grid_height) = app.grid_dimensions(codes_to_render as u32);
+    // Same width bound the fitter used, so the renderer lays the codes out in
+    // the grid that was actually chosen rather than a different one.
+    let (cols, _rows, grid_width, grid_height) =
+        app.grid_dimensions_for(codes_to_render as u32, area.width);
 
     let mut qr_data = Vec::with_capacity(codes_to_render);
     for idx in app.index..app.index + codes_to_render {
@@ -486,5 +514,54 @@ fn format_duration(d: std::time::Duration) -> String {
         format!("{hours}:{minutes:02}:{seconds:02}")
     } else {
         format!("{minutes}:{seconds:02}")
+    }
+}
+
+#[cfg(test)]
+mod grid_tests {
+    use super::*;
+    use crate::qrtypes::EccLevel;
+
+    fn app_at_version(version: i32) -> App {
+        let mut app = App::new(
+            "test".to_string(),
+            RenderOptions {
+                speed: 0.5,
+                is_slideshow: false,
+                use_inverted: false,
+                ecc_level: EccLevel::L,
+                multi_qr: Some(4),
+                no_info: true,
+            },
+        );
+        app.set_chunks(vec!["x".to_string(); 16], version);
+        app
+    }
+
+    /// A QR is square but terminals are wide, and the version comes from
+    /// terminal *height*, so height is scarce and width is usually spare. A
+    /// square grid asked for rows it could not have -- `--multi=2` wanted 2x2
+    /// when a 1x2 fits -- and silently degraded to a single code.
+    #[test]
+    fn prefers_a_single_row_when_the_terminal_is_wide() {
+        let app = app_at_version(34);
+        let (cols, rows, ..) = app.grid_dimensions_for(2, 400);
+        assert_eq!((cols, rows), (2, 1), "two codes should sit side by side");
+    }
+
+    #[test]
+    fn stacks_only_when_the_codes_will_not_fit_side_by_side() {
+        let app = app_at_version(34);
+        // One v34 code is ~156 columns; 200 has no room for a second.
+        let (cols, rows, ..) = app.grid_dimensions_for(2, 200);
+        assert_eq!((cols, rows), (1, 2));
+    }
+
+    #[test]
+    fn a_wide_terminal_actually_gets_multiple_codes() {
+        let app = app_at_version(34);
+        // The old square-grid math returned 1 here, making --multi a no-op.
+        assert_eq!(app.effective_multi_qr(400, 90), 2);
+        assert_eq!(app.effective_multi_qr(200, 90), 1);
     }
 }
