@@ -8,7 +8,7 @@ live in the git history and `CHANGELOG.md`, not here.
 - [ ] **Sign and notarize the macOS app.** It is currently ad-hoc signed with
       no Team ID, so Gatekeeper blocks it on any machine but the one that
       built it. Needs a Developer ID certificate, `codesign --options
-    runtime`, then `xcrun notarytool submit` and `xcrun stapler staple`.
+  runtime`, then `xcrun notarytool submit` and `xcrun stapler staple`.
       Nothing else on this list matters for other people until this is done.
 - [ ] **A `flutter-release` task** that builds, strips, signs, notarizes and
       staples in one step, once signing exists.
@@ -28,19 +28,20 @@ Ranked by how much confusion each would remove.
 - [ ] **Preflight card before a transfer starts.** The first symbol already
       carries K, block size and file size, so the receiver can show
       "115 MB · 70965 blocks · ~2 h at this rate · output → <dir>" with
-      Start / Change folder. Most wasted runs come from an assumption that
-      was knowable up front.
-- [ ] **Show the resolved output directory while scanning.** A path that does
-      not exist resolves silently to the default, and the transfer starts over
-      from block 1 with no visible cause.
-- [ ] **Make the "sender too slow" hint actionable.** The HUD knows
-      `estimatedSenderIntervalMs`; it could name the fix ("sender at 195
-      ms/frame — try `--speed=0.05`") rather than only flagging that headroom
-      exists. This is worth hours on a large transfer.
+      Start / Change folder, before committing to hours of scanning. The
+      output directory and a live estimate are on screen now, but only once
+      scanning is already under way.
 - [ ] **Surface layout-conflict and archive events properly.** The receiver
       detects a sender relayout and archives the superseded chunks, but
       reports it as a `PersistErrorEvent`, which reads as a failure. It should
       be a plain banner explaining what happened and where the old blocks went.
+- [ ] **Report seqs that a resume could not credit.** `restoreSeenSeqs` keeps
+      a persisted seq only when every block it covers is already recovered,
+      so a resume typically drops most of them (observed: 78204 on disk,
+      25190 restored at 36% blocks recovered). That is correct — they really
+      must be rescanned — but the decoder now counts them in
+      `rescannableSeqs` and nothing shows it, so the UI still understates how
+      much has been collected overall.
 - [ ] **Transfer directory health check.** Scan for mixed block sizes,
       metadata that disagrees with the `.bin` files on disk, and orphaned
       `chunks_superseded_*` directories.
@@ -54,7 +55,14 @@ Ranked by how much confusion each would remove.
       display-only.
 - [ ] **Test the spill path at realistic K.** It has correctness tests, but
       the gigabyte-scale measurements were throwaway scripts. A committed
-      benchmark-style test would catch a regression in the memory ceiling.
+      benchmark-style test would catch a regression in the memory ceiling —
+      and would have caught the resident cap being set an order of magnitude
+      too low, which turned the decode avalanche into disk thrashing.
+- [ ] **Find why the worker isolate died.** A live transfer lost its worker
+      with no surviving log; the isolate simply ceased to exist while the
+      camera kept running. Crashes are now caught and reported rather than
+      silent, so the next occurrence should name the exception — but the
+      underlying defect is still unidentified.
 - [ ] **Verify on real devices.** All verification so far is `flutter test`
       plus benchmarks on a development Mac. Android in particular is untested
       since the namespace and package rename.
