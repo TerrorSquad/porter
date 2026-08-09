@@ -54,88 +54,81 @@ cargo build --release
 
 ::u-page-section
 ---
-headline: 01 — The constraint
+title: A link with no back-channel
+description: The receiver cannot ask for a frame again. A dropped frame — bad angle, motion blur, a reflection at exactly the wrong moment — is simply gone, and every interesting decision in Porter follows from that.
+features:
+  - title: Sequential
+    description: Frame n is byte range n. Miss one and you wait for the sender to loop all the way back to that index.
+    icon: i-lucide-list-ordered
+  - title: Fountain
+    description: Each frame XORs a random subset of blocks, picked from its sequence number by a PRNG both sides run. Any sufficient pile rebuilds the file.
+    icon: i-lucide-waves
+  - title: So nothing is special
+    description: No individual frame matters, which means a persistently missed one costs nothing at all.
+    icon: i-lucide-shuffle
+links:
+  - label: How a transfer actually runs
+    to: /how-it-works
+    variant: link
+    trailingIcon: i-lucide-arrow-right
 ---
-#title
-A link with no back-channel
-
-#description
-The receiver cannot ask for a frame again. A dropped frame — bad angle, motion
-blur, a reflection at exactly the wrong moment — is simply gone, and every
-interesting decision in Porter follows from that.
-
-#default
-Sequential mode numbers each chunk, so a missed frame means waiting for the
-sender to loop all the way back to that index. Fountain mode makes each frame
-the XOR of a pseudo-random subset of the file's blocks, derived from the frame's
-sequence number by a PRNG both sides share:
-
-```text
-F|seq|K|fileSize|id|payload
-```
-
-Any sufficiently large pile of those frames rebuilds the file, in any order. No
-individual frame matters, so a persistently missed one costs nothing.
-
-:u-button{to="/how-it-works" variant="link" trailing-icon="i-lucide-arrow-right" label="How a transfer actually runs"}
 ::
 
 ::u-page-section
 ---
-headline: 02 — What it costs you
+title: One binary on the sending machine
+description: Porter is an air-gapped tool, so the sending machine is often not the one you keep a runtime on. The sender compiles to a single static binary — no Node.js, no Python, nothing to install alongside it.
+features:
+  - title: porter-sender <file>
+    description: A ratatui TUI — QR grid, sidebar, scrubbing and gap-fill. Runs on the offline machine.
+    icon: i-lucide-monitor-play
+  - title: Receiver app
+    description: Flutter, on Android and macOS. Scans, decodes, verifies, and resumes from disk if it is killed.
+    icon: i-lucide-smartphone
+  - title: porter-sender serve
+    description: An HTTP receiver on axum, for when a network turns out to exist after all.
+    icon: i-lucide-server
+  - title: porter-sender join
+    description: Reassembles the .partaa and .partab files a receiver wrote, with a SHA-256 check.
+    icon: i-lucide-combine
+links:
+  - label: Every flag and subcommand
+    to: /docs/reference/commands
+    variant: link
+    trailingIcon: i-lucide-arrow-right
 ---
-#title
-One binary on the sending machine
-
-#description
-Porter is an air-gapped tool, so the sending machine is often not the one you
-keep a runtime on. The sender compiles to a single static binary with no
-Node.js, no Python, and nothing to install alongside it.
-
-#default
-| Piece | What it is | Where it runs |
-| --- | --- | --- |
-| `porter-sender <file>` | ratatui TUI — QR grid, sidebar, scrubbing, gap-fill | The offline machine |
-| Receiver app | Flutter, Android + macOS, resumes from disk | The phone with the camera |
-| `porter-sender serve` | HTTP receiver on axum, for when a network does exist | Either |
-| `porter-sender join` | Reassembles `.partaa`, `.partab`, … with a SHA-256 check | Either |
-
-The repo carries no JavaScript at all — the TypeScript sender and its whole
-toolchain were deleted once `join` was ported.
-
-:u-button{to="/docs/reference/commands" variant="link" trailing-icon="i-lucide-arrow-right" label="Every flag and subcommand"}
 ::
 
 ::u-page-section
 ---
-headline: 03 — Offline, and provably so
 title: What Porter does not do
-description: The security story is short, which is the point. There is no account, no server, no telemetry, and by default no trace left on disk.
+description: The security story is short, which is the point. No account, no server, no telemetry, and by default no trace left on disk.
 features:
   - title: No network path
     description: The sender opens no sockets on the QR path. The transport is a camera pointed at a screen, so there is nothing to intercept in transit.
     icon: i-lucide-wifi-off
   - title: No disk trace by default
-    description: Slideshow position persists only under --resume, which writes .porter_history. Without the flag, nothing is written.
+    description: Slideshow position persists only under --resume. Without the flag, nothing is written.
     icon: i-lucide-file-x
   - title: No telemetry
-    description: No analytics, no crash reporting, no phone-home. Both binaries do exactly what the flags say and nothing else.
+    description: No analytics, no crash reporting, no phone-home. Both binaries do exactly what the flags say.
     icon: i-lucide-eye-off
   - title: Verified on arrival
-    description: Fountain transfers always carry a CHECKSUM frame; sequential ones do with --verify. The receiver checks SHA-256 before saving.
+    description: Fountain transfers always carry a CHECKSUM frame. The receiver checks SHA-256 before saving.
     icon: i-lucide-shield-check
   - title: Resumable receiver
-    description: Chunks land on disk as they decode, so a killed app rehydrates from the files themselves rather than re-scanning.
+    description: Chunks land on disk as they decode, so a killed app rehydrates from the files rather than re-scanning.
     icon: i-lucide-rotate-ccw
   - title: Decisions on the record
-    description: The worker isolate, fountain coding, disk hydration and the Rust move are all written up as ADRs, including the gaps left open.
+    description: The worker isolate, fountain coding, disk hydration and the Rust move are all written up as ADRs.
     icon: i-lucide-file-text
 ---
 ::
 
 ::u-page-section
 ---
-headline: 04 — Where it stops
+title: Honest limits, and an ISC licence
+description: QR is a slow, lossy, line-of-sight link, and no amount of coding changes that. A 109 MB file is roughly 26,000 chunks — a real transfer that has been run end to end, and also a long time holding a phone at a screen. Porter is for the case where two machines genuinely cannot talk: no NIC, an isolated network, a device you will not plug anything into.
 links:
   - label: Read the docs
     to: /docs/getting-started/introduction
@@ -149,17 +142,4 @@ links:
     variant: subtle
     icon: i-simple-icons-github
 ---
-#title
-Honest limits, and an ISC licence
-
-#description
-QR is a slow, lossy, line-of-sight link, and no amount of coding changes that.
-A 109 MB file is roughly 26,000 chunks — a real transfer that has been run end
-to end, and also a long time holding a phone at a screen.
-
-#default
-`porter serve` exists for when the two machines turn out to see each other over
-a network after all. Porter is for the case where they genuinely cannot: a
-machine with no NIC, an isolated network, a device you will not plug anything
-into.
 ::

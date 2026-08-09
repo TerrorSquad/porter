@@ -1,6 +1,7 @@
 @theme {
   --font-sans: 'Inter', sans-serif;
-  --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+  --font-heading: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 @theme static {
@@ -22,7 +23,20 @@ h2,
 h3,
 .font-heading {
   font-family: var(--font-heading);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+}
+
+/* Landing sections only. Body copy at full container width is unreadable, so
+   cap the measure; the heading gets a shorter one so it breaks into balanced
+   lines instead of one long ruler. */
+.landing-section h2 {
+  max-width: 20ch;
+  margin-inline: auto;
+}
+
+.landing-section :is(h2 + div, h2 ~ div p) {
+  max-width: 60ch;
+  margin-inline: auto;
 }
 
 :root {
