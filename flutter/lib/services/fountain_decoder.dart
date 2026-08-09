@@ -304,13 +304,27 @@ class FountainDecoder {
     // A seq is only safe to skip if every block it covers is already
     // recovered — otherwise its unresolved contribution lived solely in the
     // dropped pending pool and the symbol must be seen again.
+    //
+    // Most seqs fail that test: a degree-d symbol survives only if all d of
+    // its blocks are back, so at 36% blocks recovered roughly two thirds are
+    // dropped (observed: 78204 on disk, 25190 restored). That is correct —
+    // they really do need rescanning — but it means symbolCount alone
+    // understates how far along the transfer is, so the count of dropped
+    // seqs is kept for the UI to report honestly.
     for (final seq in seqs) {
       final sampled = sampleIndices(seq, k, _table);
       if (sampled.indices.every(_recoveredIndices.contains)) {
         _seenSeqs.add(seq);
+      } else {
+        rescannableSeqs++;
       }
     }
   }
+
+  /// Seqs that were persisted but could not be credited on resume, because
+  /// some block they cover is still missing. They must be scanned again.
+  /// Reported so the UI can distinguish "never seen" from "seen but lost".
+  int rescannableSeqs = 0;
 
   /// True once every source block has been recovered.
   bool get isComplete => _recoveredIndices.length == k;

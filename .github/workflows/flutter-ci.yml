@@ -46,6 +46,10 @@ jobs:
         with:
           channel: stable
           cache: true
+      # Swift Package Manager is a global flutter config flag, not a project
+      # setting, so it has to be turned on explicitly here. Without it the
+      # build falls back to CocoaPods and fails on the deleted Podfile.
+      - run: flutter config --enable-swift-package-manager
       - run: flutter pub get
       - run: flutter build macos --release
 
