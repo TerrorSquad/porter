@@ -211,17 +211,29 @@ class _TransferCardState extends State<TransferCard> {
             if (transfer.total > 0) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: transfer.displayProgress,
-                  minHeight: 6,
-                  // Matches the scanning screen: the default track is a tint
-                  // of the fill colour and disappears against it.
-                  backgroundColor: Colors.white12,
-                  valueColor: AlwaysStoppedAnimation(
-                    transfer.isComplete
-                        ? Colors.greenAccent.shade400
-                        : Colors.lightBlueAccent.shade200,
-                  ),
+                child: Stack(
+                  children: [
+                    // Symbol collection behind, blocks in front — same
+                    // two-layer reading as the scanning screen.
+                    LinearProgressIndicator(
+                      value: transfer.collectionProgress,
+                      minHeight: 6,
+                      backgroundColor: Colors.white12,
+                      valueColor: AlwaysStoppedAnimation(
+                        Colors.lightBlueAccent.shade200.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    LinearProgressIndicator(
+                      value: transfer.displayProgress,
+                      minHeight: 6,
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation(
+                        transfer.isComplete
+                            ? Colors.greenAccent.shade400
+                            : Colors.lightBlueAccent.shade200,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 4),

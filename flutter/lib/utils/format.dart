@@ -61,13 +61,24 @@ String fountainHint({
   if (remaining <= 0) return 'Collecting the last few symbols…';
 
   final pct = (symbols / symbolsNeeded * 100).clamp(0, 99).toStringAsFixed(0);
+
+  // Which phase the transfer is in changes what the user should expect, and
+  // saying the wrong one is worse than saying nothing. Before the avalanche
+  // blocks really do sit near zero and a flat count is normal; afterwards
+  // each new symbol decodes roughly one block, and claiming otherwise makes
+  // healthy progress look wrong. Measured on a real transfer: 68752 symbols
+  // for 4344 blocks early on, then 28839 symbols for 28103 blocks later.
+  final decoding = blocks > totalBlocks * 0.1;
+  final phase = decoding
+      ? 'blocks are decoding as symbols arrive'
+      : 'blocks stay near 0 until enough symbols are in';
+
   if (newPerSecond <= 0) {
-    return 'Collecting symbols: $pct% — blocks stay near 0 until the end';
+    return 'Collecting symbols: $pct% — $phase';
   }
 
   final eta = formatEta(Duration(seconds: (remaining / newPerSecond).round()));
-  return 'Collecting symbols: $pct% · $eta left — '
-      'blocks stay near 0 until the end';
+  return 'Collecting symbols: $pct% · $eta left — $phase';
 }
 
 /// Condenses a sorted list of chunk indices into comma-separated ranges,

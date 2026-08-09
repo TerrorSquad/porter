@@ -62,7 +62,7 @@ void main() {
       expect(t.progressLabel, '1 / 4 chunks');
     });
 
-    test('fountain displayProgress tracks symbols, not recovered blocks', () {
+    test('fountain displayProgress tracks blocks, with symbols behind it', () {
       final t = Transfer(id: 'CD')
         ..encoding = 'fountain'
         ..total = 100
@@ -72,10 +72,12 @@ void main() {
       // Sequential progress would show ~1%. Fountain scales symbols against
       // the ~1.5K actually needed to decode, not K: dividing by K showed
       // ~99% while a third of the scanning remained, which read as a hang.
-      // Scaled to the blocks still missing (99 of 100), not all of K.
-      expect(t.fountainSymbolsNeeded, 198);
-      expect(t.displayProgress, closeTo(40 / 198, 1e-9));
-      expect(t.progressLabel, '40 / 198 symbols · 1 / 100 blocks decoded');
+      // The bar is blocks over K: a denominator that never moves, where
+      // 100% genuinely means done. Symbol collection rides behind it so the
+      // pre-avalanche phase still shows movement.
+      expect(t.displayProgress, closeTo(1 / 100, 1e-9));
+      expect(t.collectionProgress, closeTo(40 / 198, 1e-9));
+      expect(t.progressLabel, '1 / 100 blocks · 40 symbols collected');
     });
 
 
@@ -95,19 +97,25 @@ void main() {
       expect(t.fountainSymbolsNeeded, (70965 - 25853) * 2);
       expect(t.fountainSymbolsNeeded, lessThan(70965 * 2),
           reason: 'resumed work must cost less than a cold start');
-      expect(t.displayProgress, greaterThan(25190 / (70965 * 2)),
-          reason: 'progress should reflect the blocks already recovered');
+      expect(t.displayProgress, closeTo(25853 / 70965, 1e-9),
+          reason: 'the bar credits the blocks already on disk');
     });
 
-    test('fountain displayProgress caps below 1.0 until actually complete', () {
+    test('fountain displayProgress only reaches 1.0 when every block is in',
+        () {
       final t = Transfer(id: 'EF')
         ..encoding = 'fountain'
         ..total = 10
         ..fountainSymbols = 30; // more symbols than K, but not decoded yet
       t.addChunk(1, [1]);
-      expect(t.displayProgress, 0.99);
 
-      // Once every block is recovered, it reads a full 1.0.
+      // Tracking blocks means the bar cannot outrun reality: collecting more
+      // symbols than K does not move it, so the old "cap at 0.99" guard is
+      // no longer needed.
+      expect(t.displayProgress, closeTo(0.1, 1e-9));
+      expect(t.collectionProgress, 1.0,
+          reason: 'collection is saturated even though nothing has decoded');
+
       for (var i = 2; i <= 10; i++) {
         t.addChunk(i, [i]);
       }

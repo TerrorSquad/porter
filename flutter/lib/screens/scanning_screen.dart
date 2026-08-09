@@ -477,18 +477,36 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
                     if (transfer != null) ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: transfer.displayProgress,
-                          minHeight: 8,
-                          // The default track is a translucent tint of the
-                          // same green as the fill, which on the dark chrome
-                          // left the two nearly indistinguishable — a mostly
-                          // empty bar read as a nearly full one. An explicit
-                          // dark track makes the boundary obvious.
-                          backgroundColor: Colors.white12,
-                          valueColor: AlwaysStoppedAnimation(
-                            Colors.greenAccent.shade400,
-                          ),
+                        child: Stack(
+                          children: [
+                            // Symbol collection, drawn behind. Before the
+                            // peeling avalanche blocks sit near zero for a
+                            // long time, so this is what shows the transfer
+                            // is alive; it is dimmer because it is progress
+                            // toward decoding, not decoded data.
+                            LinearProgressIndicator(
+                              value: transfer.collectionProgress,
+                              minHeight: 8,
+                              // The default track is a translucent tint of
+                              // the fill colour, which on the dark chrome
+                              // left a nearly empty bar looking nearly full.
+                              backgroundColor: Colors.white12,
+                              valueColor: AlwaysStoppedAnimation(
+                                Colors.greenAccent.shade400
+                                    .withValues(alpha: 0.28),
+                              ),
+                            ),
+                            // Blocks actually recovered. Denominator is K, so
+                            // it never moves and 100% means done.
+                            LinearProgressIndicator(
+                              value: transfer.displayProgress,
+                              minHeight: 8,
+                              backgroundColor: Colors.transparent,
+                              valueColor: AlwaysStoppedAnimation(
+                                Colors.greenAccent.shade400,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 12),

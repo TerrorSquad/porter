@@ -163,7 +163,14 @@ void main() {
 
       await pumpScreen(tester, scanner);
 
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      // Two layers now: symbol collection behind, blocks decoded in front.
+      // The front one is what "progress" means, so assert on its value.
+      final bars = tester
+          .widgetList<LinearProgressIndicator>(
+              find.byType(LinearProgressIndicator))
+          .toList();
+      expect(bars, hasLength(2));
+      expect(bars.last.value, closeTo(0.5, 1e-9));
       expect(find.text('1 / 2 chunks'), findsOneWidget);
       expect(find.text('Point camera at QR codes'), findsNothing);
     });

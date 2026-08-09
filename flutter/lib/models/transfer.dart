@@ -63,13 +63,23 @@ class Transfer {
   double get displayProgress {
     if (isComplete) return 1.0;
     if (total <= 0) return 0.0;
-    if (isFountain) {
-      final needed = fountainSymbolsNeeded;
-      if (needed <= 0) return 0.99;
-      final frac = fountainSymbols / needed;
-      return frac < 0.99 ? frac : 0.99;
-    }
     return seenIndices.length / total;
+  }
+
+  /// Secondary fill shown *behind* [displayProgress] for fountain transfers:
+  /// how far symbol collection has got toward decoding everything.
+  ///
+  /// Blocks are the honest measure — the denominator is K, it never moves,
+  /// and 100% means done — but before the peeling avalanche they sit near
+  /// zero for a long time (measured: 68752 symbols for 4344 blocks), so a
+  /// blocks-only bar reads as frozen during hours of real work. Drawing
+  /// collection progress behind the block fill keeps the bar truthful while
+  /// still showing that something is happening.
+  double get collectionProgress {
+    if (!isFountain || isComplete || total <= 0) return 0.0;
+    final needed = fountainSymbolsNeeded;
+    if (needed <= 0) return 0.0;
+    return (fountainSymbols / needed).clamp(0.0, 1.0);
   }
 
   /// Distinct symbols peeling needs before it can decode.
@@ -84,6 +94,9 @@ class Transfer {
   /// left. Observed on a resume with 36% of blocks already recovered — the
   /// flat 2K target implied ~13 hours remaining when most of that had
   /// already been paid for.
+  /// Symbols still expected, from the blocks yet to decode. Only feeds
+  /// [collectionProgress] and the ETA — never the main bar, so the fact that
+  /// it shrinks as blocks land no longer makes a displayed total count down.
   int get fountainSymbolsNeeded {
     final missing = total - seenIndices.length;
     if (missing <= 0) return fountainSymbols;
@@ -107,8 +120,12 @@ class Transfer {
   /// transfer look frozen.
   String get progressLabel {
     if (isFountain) {
-      return '$fountainSymbols / $fountainSymbolsNeeded symbols · '
-          '${seenIndices.length} / $total blocks decoded';
+      // Blocks lead, since that is what the bar measures and what "done"
+      // means. The symbol count follows as evidence of ongoing work; it is
+      // deliberately not shown against a target, because that target moves
+      // as blocks decode and a countdown reads as going backwards.
+      return '${seenIndices.length} / $total blocks · '
+          '$fountainSymbols symbols collected';
     }
     return '${seenIndices.length} / $total chunks';
   }
