@@ -2,9 +2,16 @@
 node = "24.13.0"
 pnpm = "10.32.1"
 
+[tasks.hooks-install]
+run = "forge install"
+
 [tasks.node-install]
 dir = "nodejs"
 run = "pnpm install:local"
+
+[tasks.node-lint]
+dir = "nodejs"
+run = "pnpm run lint && pnpm run lint:md && pnpm run format:check"
 
 [tasks.node-build]
 dir = "nodejs"

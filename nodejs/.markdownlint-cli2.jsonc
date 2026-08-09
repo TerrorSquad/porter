@@ -1,0 +1,22 @@
+{
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD033": false,
+    "MD041": false,
+    "MD060": false,
+    "MD001": false,
+  },
+  // Globs reach up to the repo root: this config lives in nodejs/ (see
+  // ADR-0004 deprecation) but markdownlint still covers every .md in the repo.
+  "globs": [
+    "../**/*.md",
+    "!**/node_modules/**",
+    "!**/vendor/**",
+    "!../flutter/build/**",
+    "!../flutter/.dart_tool/**",
+    "!../flutter/macos/Flutter/ephemeral/**",
+    "!../flutter/third_party/**",
+    "!**/target/**",
+  ],
+}

@@ -1,0 +1,11 @@
+../node_modules
+node_modules
+dist
+../flutter/build
+../flutter/.dart_tool
+../flutter/macos/Flutter/ephemeral
+../flutter/third_party
+../rust-sender/target
+../pnpm-lock.yaml
+pnpm-lock.yaml
+../CHANGELOG.md
