@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:porter_receiver/providers/scanner_provider.dart';
+import 'package:porter_receiver/services/assembler_worker.dart';
 
 /// Polls [condition] until it becomes true or [timeout] elapses.
 Future<void> waitFor(bool Function() condition, {Duration timeout = const Duration(seconds: 5)}) async {
@@ -292,6 +293,59 @@ void main() {
 
         await Future<void>.delayed(const Duration(milliseconds: 50));
       });
+    });
+  });
+
+  group('stall and worker-death reporting', () {
+    // The UI could not distinguish "working" from "dead": the camera and FPS
+    // readout live on the main isolate and keep running even after the worker
+    // isolate stops. A live transfer sat at 42% CPU with zero progress for 14
+    // minutes with nothing on screen to say so.
+    test('a fatal worker event marks the provider dead and stalled', () async {
+      final provider = ScannerProvider();
+      addTearDown(provider.dispose);
+      await provider.ready;
+
+      expect(provider.workerDead, false);
+      expect(provider.isStalled, false);
+
+      provider.applyWorkerEvent(
+        WorkerCrashEvent('boom', 'stack', isFatal: true),
+      );
+
+      expect(provider.workerDead, true);
+      expect(provider.isStalled, true);
+      expect(provider.workerError, 'boom');
+    });
+
+    test('a non-fatal worker error is reported without marking it dead',
+        () async {
+      final provider = ScannerProvider();
+      addTearDown(provider.dispose);
+      await provider.ready;
+
+      provider.applyWorkerEvent(WorkerCrashEvent('recoverable', null));
+
+      expect(provider.workerError, 'recoverable');
+      expect(provider.workerDead, false);
+      expect(provider.isStalled, false,
+          reason: 'one failed message is not a stall');
+    });
+
+    test('sinceLastNewChunk survives past the rate window', () async {
+      final provider = ScannerProvider();
+      addTearDown(provider.dispose);
+      await provider.ready;
+
+      expect(provider.sinceLastNewChunk, isNull);
+
+      provider.applyWorkerEvent(ScanCountedEvent(true));
+
+      // Tracked on its own field, not derived from the pruned rate window --
+      // that window empties after 30s, which is exactly when a stall needs
+      // detecting.
+      expect(provider.sinceLastNewChunk, isNotNull);
+      expect(provider.sinceLastNewChunk!.inSeconds, lessThan(2));
     });
   });
 }

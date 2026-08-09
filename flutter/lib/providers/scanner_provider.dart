@@ -203,6 +203,7 @@ class ScannerProvider extends ChangeNotifier {
       case ScanCountedEvent(:final isNew):
         if (isNew) {
           totalScanned++;
+          _lastNewChunkAt = DateTime.now();
           _recentNewChunks.add(DateTime.now());
           _recentNewForRate.add(DateTime.now());
           if (_recentNewChunks.length > _senderIntervalSampleSize) {
@@ -232,7 +233,44 @@ class ScannerProvider extends ChangeNotifier {
         notifyListeners();
       case PersistErrorEvent(:final message):
         debugPrint(message);
+      case WorkerCrashEvent(:final error, :final stack, :final isFatal):
+        debugPrint('Worker error: $error\n$stack');
+        workerError = error;
+        workerDead = workerDead || isFatal;
+        notifyListeners();
     }
+  }
+
+  /// Last error reported by the decoding worker, or null. Surfaced in the UI:
+  /// a worker that stopped is otherwise invisible, since the camera and FPS
+  /// readout live on the main isolate and keep running regardless.
+  String? workerError;
+
+  /// True once the worker isolate has died. Nothing further will be ingested
+  /// until the app restarts; already-received blocks are safe on disk.
+  bool workerDead = false;
+
+  /// When the last *new* symbol was accepted. Tracked separately from
+  /// [_recentNewForRate], which is pruned to a rolling window and so would be
+  /// empty at exactly the moment a stall needs detecting.
+  DateTime? _lastNewChunkAt;
+
+  /// How long since the last *new* symbol was accepted, or null if none has
+  /// arrived yet this session. The basis for the stall warning.
+  Duration? get sinceLastNewChunk {
+    final last = _lastNewChunkAt;
+    if (last == null) return null;
+    return DateTime.now().difference(last);
+  }
+
+  /// True when frames are still being decoded but nothing new has been
+  /// accepted for a while -- either the sender stopped, the camera lost the
+  /// code, or the worker is wedged. Distinguishing "working" from "dead" was
+  /// impossible from the UI before this.
+  bool get isStalled {
+    if (workerDead) return true;
+    final since = sinceLastNewChunk;
+    return since != null && since > const Duration(minutes: 2);
   }
 
   void resetAll() {
@@ -248,6 +286,8 @@ class ScannerProvider extends ChangeNotifier {
     _recentBytes.clear();
     _recentNewChunks.clear();
     _recentNewForRate.clear();
+    _lastNewChunkAt = null;
+    workerError = null;
     notifyListeners();
   }
 

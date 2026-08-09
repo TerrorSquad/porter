@@ -155,6 +155,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: (value) =>
                         context.read<SettingsProvider>().setAutoSave(value),
                   ),
+                  SwitchListTile(
+                    title: const Text('Confirm before quitting mid-transfer'),
+                    subtitle: const Text(
+                      'A transfer can represent hours of scanning. Recovered '
+                      'blocks are saved, but un-decoded symbols are lost on quit.',
+                    ),
+                    value: settings.confirmExitDuringTransfer,
+                    onChanged: (value) => context
+                        .read<SettingsProvider>()
+                        .setConfirmExitDuringTransfer(value),
+                  ),
                 ],
               ),
             ),

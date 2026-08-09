@@ -9,6 +9,7 @@ import '../models/camera_resolution.dart';
 import '../models/transfer.dart';
 import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/window_guard.dart';
 import '../utils/format.dart';
 import '../utils/transfer_actions.dart';
 import 'settings_screen.dart';
@@ -57,7 +58,20 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
     // Refresh periodically so the scans/sec readout decays toward 0 between
     // scans, not just when a new one comes in.
     _rateTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {});
+
+      // Keep the native close guard in step with reality. A transfer counts
+      // as in progress when it has started, hasn't completed, and the worker
+      // is still alive -- quitting past a dead worker costs nothing.
+      final scanner = context.read<ScannerProvider>();
+      final settings = context.read<SettingsProvider>();
+      final active = scanner.activeTransfer;
+      final inProgress = settings.confirmExitDuringTransfer &&
+          active != null &&
+          !active.isComplete &&
+          !scanner.workerDead;
+      unawaited(WindowGuard.setTransferInProgress(inProgress));
     });
 
     _scannerProvider = context.read<ScannerProvider>();
@@ -294,6 +308,15 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
     );
   }
 
+  /// A `--speed` value (seconds per frame) the sender could move to, from the
+  /// receiver's measured decode rate. Rounded to something typeable and
+  /// clamped so it never suggests a pace the camera cannot follow.
+  static String? _suggestedSpeed(double decodesPerSecond) {
+    if (decodesPerSecond < 2) return null;
+    final seconds = (1 / decodesPerSecond).clamp(0.05, 0.5);
+    return seconds.toStringAsFixed(2);
+  }
+
   String _hudText(ScannerProvider provider) {
     final scanned = provider.totalScanned + provider.duplicatesSkipped;
     final rate = provider.scansPerSecond;
@@ -305,8 +328,13 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
     // frame interval from new-chunk arrival gaps, so it's the number that
     // actually answers "could the sender go faster?".
     final senderPart = senderMs != null ? ' · sender ~${senderMs}ms/frame' : '';
+    // Naming the flag beats hinting at it: the difference between the
+    // sender's current pace and one the receiver can keep up with is worth
+    // hours on a large transfer, and the user has to guess the value
+    // otherwise. Target roughly the receiver's own decode rate.
     final hintPart = switch (provider.speedHint) {
-      SpeedHint.increase => ' · could go faster ⚡',
+      SpeedHint.increase => ' · could go faster ⚡'
+          '${_suggestedSpeed(rate) != null ? ' (try --speed=${_suggestedSpeed(rate)})' : ''}',
       SpeedHint.decrease => ' · try slowing down ⚠️',
       null => '',
     };
@@ -432,6 +460,19 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // A stalled or dead worker is otherwise invisible: the
+                    // camera and FPS readout run on the main isolate and keep
+                    // updating regardless, so the app looks busy while
+                    // nothing is being ingested.
+                    if (provider.isStalled) ...[
+                      _StallBanner(
+                        dead: provider.workerDead,
+                        since: provider.sinceLastNewChunk,
+                        error: provider.workerError,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
                     // Progress
                     if (transfer != null) ...[
                       ClipRRect(
@@ -474,6 +515,20 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
                       ],
                       const SizedBox(height: 8),
                       _buildHud(context, provider, settings),
+                      const SizedBox(height: 4),
+                      // A configured path that doesn't exist resolves silently
+                      // to the default, and the transfer starts from block 1
+                      // with no visible cause. Showing where bytes are landing
+                      // makes that mistake self-evident.
+                      Text(
+                        'saving to ${settings.outputDirectory ?? 'default downloads folder'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: Colors.white38),
+                      ),
                     ] else ...[
                       Text(
                         'Point camera at QR codes',
@@ -557,6 +612,70 @@ class _FocusReticleState extends State<_FocusReticle> with SingleTickerProviderS
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Shown when nothing new has been decoded for a while, or the worker died.
+class _StallBanner extends StatelessWidget {
+  const _StallBanner({required this.dead, required this.since, this.error});
+
+  final bool dead;
+  final Duration? since;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final colour = dead ? Colors.redAccent : Colors.amberAccent;
+    final headline = dead
+        ? 'Decoding stopped — restart the app to resume'
+        : 'No new frames for ${formatDuration(since ?? Duration.zero)}';
+    final detail = dead
+        ? 'Blocks already received are saved and will be picked up on restart.'
+        : 'Check the sender is still advancing and the code is in frame.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colour.withValues(alpha: 0.12),
+        border: Border.all(color: colour.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(dead ? Icons.error_outline : Icons.warning_amber_rounded,
+                  size: 18, color: colour),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  headline,
+                  style: TextStyle(color: colour, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(detail,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Colors.white70)),
+          if (error != null) ...[
+            const SizedBox(height: 4),
+            Text(error!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.white38)),
+          ],
+        ],
       ),
     );
   }

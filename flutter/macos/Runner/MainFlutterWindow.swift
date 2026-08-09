@@ -1,7 +1,16 @@
 import Cocoa
 import FlutterMacOS
 
-class MainFlutterWindow: NSWindow {
+class MainFlutterWindow: NSWindow, NSWindowDelegate {
+  /// Set by Dart whenever a transfer starts or finishes, so the close button
+  /// can ask for confirmation without a round trip while the window is
+  /// closing (windowShouldClose must answer synchronously).
+  private var transferInProgress = false
+
+  /// True while the confirmation sheet is up, so a second close attempt
+  /// doesn't stack another sheet.
+  private var askingToClose = false
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
@@ -10,8 +19,55 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     registerSecureBookmarksChannel(flutterViewController)
+    registerTransferStateChannel(flutterViewController)
+
+    self.delegate = self
 
     super.awakeFromNib()
+  }
+
+  /// Confirms before closing mid-transfer. A large transfer is hours of
+  /// scanning; recovered blocks are on disk, but the un-peeled symbol pool
+  /// is lost, so quitting by accident is expensive.
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    guard transferInProgress, !askingToClose else { return true }
+
+    askingToClose = true
+    let alert = NSAlert()
+    alert.messageText = "A transfer is still in progress"
+    alert.informativeText =
+      "Blocks already decoded are saved and will resume next time, but symbols "
+      + "collected in memory will be lost. Quit anyway?"
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Quit")
+    alert.addButton(withTitle: "Keep Scanning")
+
+    alert.beginSheetModal(for: self) { response in
+      self.askingToClose = false
+      if response == .alertFirstButtonReturn {
+        self.transferInProgress = false
+        self.close()
+      }
+    }
+    return false
+  }
+
+  /// Dart reports whether a transfer is active; see `windowShouldClose`.
+  private func registerTransferStateChannel(_ controller: FlutterViewController) {
+    let channel = FlutterMethodChannel(
+      name: "porter/window",
+      binaryMessenger: controller.engine.binaryMessenger)
+
+    channel.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "setTransferInProgress":
+        let args = call.arguments as? [String: Any]
+        self?.transferInProgress = (args?["inProgress"] as? Bool) ?? false
+        result(nil)
+      default:
+        result(FlutterError(code: "unimplemented", message: nil, details: nil))
+      }
+    }
   }
 
   /// Lets the user-selected output directory survive across app launches.

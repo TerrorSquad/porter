@@ -9,6 +9,7 @@ import '../services/secure_bookmark.dart';
 const _kOutputDirectoryKey = 'porter.outputDirectory';
 const _kOutputDirectoryBookmarkKey = 'porter.outputDirectoryBookmark';
 const _kAutoSaveKey = 'porter.autoSave';
+const _kConfirmExitKey = 'porter.confirmExitDuringTransfer';
 const _kCameraResolutionKey = 'porter.cameraResolution';
 const _kCameraFpsKey = 'porter.cameraFps';
 const _kRelayUrlKey = 'porter.relayUrl';
@@ -19,6 +20,7 @@ const _kSelectedCameraIdKey = 'porter.selectedCameraId';
 class SettingsProvider extends ChangeNotifier {
   String? _outputDirectory;
   bool _autoSave = false;
+  bool _confirmExitDuringTransfer = true;
   CameraResolutionPreset _cameraResolution = CameraResolutionPreset.p1080;
   CameraFpsPreset _cameraFps = CameraFpsPreset.auto;
   String _relayUrl = '';
@@ -39,6 +41,12 @@ class SettingsProvider extends ChangeNotifier {
   /// Whether completed transfers are saved automatically without prompting.
   bool get autoSave => _autoSave;
 
+  /// Whether to confirm before quitting with a transfer still in progress.
+  /// On by default: a large transfer represents hours of scanning, and
+  /// quitting loses the un-peeled symbol pool even though recovered blocks
+  /// are safe on disk.
+  bool get confirmExitDuringTransfer => _confirmExitDuringTransfer;
+
   CameraResolutionPreset get cameraResolution => _cameraResolution;
 
   CameraFpsPreset get cameraFps => _cameraFps;
@@ -54,6 +62,7 @@ class SettingsProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _outputDirectory = prefs.getString(_kOutputDirectoryKey);
     _autoSave = prefs.getBool(_kAutoSaveKey) ?? false;
+    _confirmExitDuringTransfer = prefs.getBool(_kConfirmExitKey) ?? true;
 
     final bookmark = prefs.getString(_kOutputDirectoryBookmarkKey);
     if (bookmark != null) {
@@ -122,6 +131,14 @@ class SettingsProvider extends ChangeNotifier {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kAutoSaveKey, enabled);
+  }
+
+  Future<void> setConfirmExitDuringTransfer(bool enabled) async {
+    _confirmExitDuringTransfer = enabled;
+    notifyListeners();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kConfirmExitKey, enabled);
   }
 
   Future<void> setCameraResolution(CameraResolutionPreset preset) async {

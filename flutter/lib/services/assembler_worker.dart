@@ -70,6 +70,26 @@ class TransferCompletedEvent extends WorkerEvent {
   TransferCompletedEvent(this.snapshot, this.assembled);
 }
 
+/// Set when the worker is being torn down on purpose, so the exit handler can
+/// tell an intentional kill from a crash.
+class _ShutdownFlag {
+  bool intentional = false;
+}
+
+/// The worker caught an error handling a request, or died outright. Either
+/// way the transfer is no longer progressing, and the UI must say so rather
+/// than showing a live camera over a worker that stopped.
+class WorkerCrashEvent extends WorkerEvent {
+  final String error;
+  final String? stack;
+
+  /// True when the isolate itself terminated, so nothing further will be
+  /// ingested until the app restarts.
+  final bool isFatal;
+
+  WorkerCrashEvent(this.error, this.stack, {this.isFatal = false});
+}
+
 class PersistErrorEvent extends WorkerEvent {
   final String transferId;
   final String message;
@@ -227,59 +247,68 @@ void _workerMain((RootIsolateToken, SendPort) args) {
   };
 
   receivePort.listen((message) {
-    if (message is _IngestQR) {
-      final isNew = assembler.ingest(message.raw);
-      mainSendPort.send(ScanCountedEvent(isNew));
-    } else if (message is _ResetRequest) {
-      assembler.reset(message.id);
-      if (message.id != null) {
-        pendingSeqs.remove(message.id);
-        seqTransfers.remove(message.id);
-        spills.remove(message.id)?.dispose();
-        metadataWriters.remove(message.id)?.dispose();
-      } else {
-        pendingSeqs.clear();
-        seqTransfers.clear();
-        for (final s in spills.values) {
-          s.dispose();
+    // An uncaught throw in here kills the whole isolate: the camera and UI
+    // keep running on the main isolate and FPS keeps updating, but nothing is
+    // ever ingested again. Seen live -- a transfer sat at 42% CPU with zero
+    // progress for 14 minutes with no indication anything was wrong. A failed
+    // message must degrade to one reported error, never a dead worker.
+    try {
+      if (message is _IngestQR) {
+        final isNew = assembler.ingest(message.raw);
+        mainSendPort.send(ScanCountedEvent(isNew));
+      } else if (message is _ResetRequest) {
+        assembler.reset(message.id);
+        if (message.id != null) {
+          pendingSeqs.remove(message.id);
+          seqTransfers.remove(message.id);
+          spills.remove(message.id)?.dispose();
+          metadataWriters.remove(message.id)?.dispose();
+        } else {
+          pendingSeqs.clear();
+          seqTransfers.clear();
+          for (final s in spills.values) {
+            s.dispose();
+          }
+          spills.clear();
+          for (final w in metadataWriters.values) {
+            w.dispose();
+          }
+          metadataWriters.clear();
         }
-        spills.clear();
+      } else if (message is _SetOutputDirectory) {
+        outputDirectory = message.outputDirectory;
+      } else if (message is _FlushAll) {
         for (final w in metadataWriters.values) {
-          w.dispose();
+          unawaited(w.flush());
         }
-        metadataWriters.clear();
-      }
-    } else if (message is _SetOutputDirectory) {
-      outputDirectory = message.outputDirectory;
-    } else if (message is _FlushAll) {
-      for (final w in metadataWriters.values) {
-        unawaited(w.flush());
-      }
-      seqFlushTimer?.cancel();
-      seqFlushTimer = null;
-      unawaited(flushSeqs());
-    } else if (message is _HydrateFromDisk) {
-      // Also adopt this as the working outputDirectory: a transfer that
-      // turns out to already be complete gets assembled/written during
-      // hydrate() below, and that write must use this directory directly
-      // rather than falling through to path_provider's getDownloadsDirectory
-      // (a platform-channel call) — doing a platform-channel round trip
-      // synchronously interleaved with a large hydration scan is what
-      // crashed the isolate in practice.
-      outputDirectory = message.outputDirectory;
+        seqFlushTimer?.cancel();
+        seqFlushTimer = null;
+        unawaited(flushSeqs());
+      } else if (message is _HydrateFromDisk) {
+        // Also adopt this as the working outputDirectory: a transfer that
+        // turns out to already be complete gets assembled/written during
+        // hydrate() below, and that write must use this directory directly
+        // rather than falling through to path_provider's getDownloadsDirectory
+        // (a platform-channel call) — doing a platform-channel round trip
+        // synchronously interleaved with a large hydration scan is what
+        // crashed the isolate in practice.
+        outputDirectory = message.outputDirectory;
 
-      // Assembler.hydrate fires onProgress per transfer, which already posts
-      // a ProgressSnapshotEvent — no separate event type needed here. The
-      // `hydrating` flag lets the main isolate tell hydration-sourced
-      // snapshots apart from live-scan ones.
-      ChunkStorage.hydrateAll(outputDirectory: message.outputDirectory).then((hydrated) async {
-        hydrating = true;
-        await assembler.hydrate(hydrated);
-        hydrating = false;
-      }).catchError((Object e) {
-        hydrating = false;
-        mainSendPort.send(PersistErrorEvent('', 'Failed to hydrate from disk: $e'));
-      });
+        // Assembler.hydrate fires onProgress per transfer, which already posts
+        // a ProgressSnapshotEvent — no separate event type needed here. The
+        // `hydrating` flag lets the main isolate tell hydration-sourced
+        // snapshots apart from live-scan ones.
+        ChunkStorage.hydrateAll(outputDirectory: message.outputDirectory).then((hydrated) async {
+          hydrating = true;
+          await assembler.hydrate(hydrated);
+          hydrating = false;
+        }).catchError((Object e) {
+          hydrating = false;
+          mainSendPort.send(PersistErrorEvent('', 'Failed to hydrate from disk: $e'));
+        });
+      }
+    } catch (e, stack) {
+      mainSendPort.send(WorkerCrashEvent(e.toString(), stack.toString()));
     }
   });
 }
@@ -292,7 +321,18 @@ class AssemblerWorker {
   final SendPort _sendPort;
   final StreamSubscription<dynamic> _subscription;
 
-  AssemblerWorker._(this._isolate, this._sendPort, this._subscription);
+  final ReceivePort _errorPort;
+  final ReceivePort _exitPort;
+  final _ShutdownFlag _shutdown;
+
+  AssemblerWorker._(
+    this._isolate,
+    this._sendPort,
+    this._subscription,
+    this._errorPort,
+    this._exitPort,
+    this._shutdown,
+  );
 
   static Future<AssemblerWorker> spawn(void Function(WorkerEvent) onEvent) async {
     final rootIsolateToken = RootIsolateToken.instance;
@@ -301,7 +341,39 @@ class AssemblerWorker {
     }
 
     final initPort = ReceivePort();
-    final isolate = await Isolate.spawn(_workerMain, (rootIsolateToken, initPort.sendPort));
+    // onError/onExit are the only way to learn the isolate died. Without
+    // them a crashed worker is indistinguishable from an idle one: the app
+    // keeps scanning into a void.
+    final errorPort = ReceivePort();
+    final exitPort = ReceivePort();
+    errorPort.listen((message) {
+      final parts = message is List && message.length >= 2
+          ? message
+          : [message.toString(), null];
+      onEvent(WorkerCrashEvent(
+        parts[0]?.toString() ?? 'unknown worker error',
+        parts[1]?.toString(),
+        isFatal: true,
+      ));
+    });
+    // onExit also fires for an intentional kill in dispose(), which is not a
+    // crash and must not raise an alarm (or touch a disposed provider).
+    final shutdown = _ShutdownFlag();
+    exitPort.listen((_) {
+      if (shutdown.intentional) return;
+      onEvent(WorkerCrashEvent(
+        'The decoding worker stopped unexpectedly.',
+        null,
+        isFatal: true,
+      ));
+    });
+
+    final isolate = await Isolate.spawn(
+      _workerMain,
+      (rootIsolateToken, initPort.sendPort),
+      onError: errorPort.sendPort,
+      onExit: exitPort.sendPort,
+    );
 
     final sendPortCompleter = Completer<SendPort>();
     final subscription = initPort.listen((message) {
@@ -313,7 +385,8 @@ class AssemblerWorker {
     });
 
     final sendPort = await sendPortCompleter.future;
-    return AssemblerWorker._(isolate, sendPort, subscription);
+    return AssemblerWorker._(
+        isolate, sendPort, subscription, errorPort, exitPort, shutdown);
   }
 
   void ingestQR(String raw) => _sendPort.send(_IngestQR(raw));
@@ -335,7 +408,10 @@ class AssemblerWorker {
       _sendPort.send(_HydrateFromDisk(outputDirectory));
 
   Future<void> dispose() async {
+    _shutdown.intentional = true;
     await _subscription.cancel();
+    _errorPort.close();
+    _exitPort.close();
     _isolate.kill(priority: Isolate.immediate);
   }
 }
