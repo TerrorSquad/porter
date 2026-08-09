@@ -68,15 +68,24 @@ round trip.
 
 ## Known limitation
 
-For fountain-encoded transfers, hydration only restores already-recovered
-source blocks (credited immediately via `markSeen`). The underlying
-`FountainDecoder`'s partial peeling state — pending symbols, seen `seq`
-numbers — cannot be reconstructed from recovered bytes alone, so a resumed
-fountain transfer's decoder starts peeling from scratch. Already-recovered
-blocks aren't re-requested or re-decoded; new symbols scanned post-resume
-feed a fresh decoder as normal. Worst case is redundantly re-processing
-some already-effectively-seen symbol information, not a correctness loss
-— final SHA-256 verification still gates completion regardless.
+Superseded in part (2026-08-09): seen `seq` numbers _are_ now persisted, to
+an append-only `seen_seqs.bin` sidecar, and restored on hydration — see
+`ChunkStorage.appendSeenSeqs` / `FountainDecoder.restoreSeenSeqs`. A resumed
+transfer therefore skips symbols whose blocks are already on disk instead of
+rescanning the whole pool.
+
+What still isn't restored is the **pending** pool: one `blockSize` buffer per
+unpeeled symbol, collectively larger than the file being transferred, so
+persisting it would cost more I/O than rescanning. Because of that, only a
+seq whose covered blocks are _all_ already recovered is safe to skip;
+`restoreSeenSeqs` drops the rest, since their contribution lived solely in
+the dropped pending buffers. Worst case is redundantly rescanning some
+symbols, not a correctness loss — final SHA-256 verification still gates
+completion regardless.
+
+Recovered blocks are credited by index (`markSeen`) and their bytes are read
+back lazily through `blockLoader`, so peeling can use them without loading
+every chunk into memory at startup.
 
 ## Consequences
 
@@ -88,6 +97,9 @@ some already-effectively-seen symbol information, not a correctness loss
   convenience, never load-bearing for correctness.
 - Resumed fountain transfers pay a peeling-restart cost proportional to
   symbols-still-needed, not a correctness or memory cost.
+- Hydration must be re-run whenever the output directory changes, not only
+  at startup: a directory picked after launch would otherwise be scanned
+  never, silently abandoning a resumable transfer already on disk.
 
 ## Open questions
 
