@@ -4,6 +4,17 @@ on:
   pull_request:
     paths:
       - 'flutter/**'
+      - '.github/workflows/flutter-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'flutter/**'
+      - '.github/workflows/flutter-ci.yml'
+
+# A force-push or rapid follow-up commit makes older runs irrelevant.
+concurrency:
+  group: flutter-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -16,6 +27,60 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
       - run: flutter pub get
-      - run: flutter test
       - run: flutter analyze
+      - run: flutter test
+
+  # The unit tests run on Linux, which never compiles the macOS runner. A
+  # broken Xcode config (bundle id, ARCHS, icon set, entitlements) would
+  # otherwise only surface on a developer's machine at release time.
+  build-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+
+      - name: Strip the x86_64 slice
+        run: |
+          ARCHS=arm64 \
+            BUILT_PRODUCTS_DIR="$PWD/build/macos/Build/Products/Release" \
+            WRAPPER_NAME=PorterRx.app \
+            sh macos/strip_x86_64.sh
+
+      # Guards the two things that silently regress: the bundle identity and
+      # the arm64-only invariant the strip script exists to maintain.
+      - name: Verify bundle
+        run: |
+          APP=build/macos/Build/Products/Release/PorterRx.app
+          test -d "$APP" || { echo "missing $APP"; exit 1; }
+
+          id=$(defaults read "$PWD/$APP/Contents/Info.plist" CFBundleIdentifier)
+          if [ "$id" != "com.goranninkovic.porterrx" ]; then
+            echo "unexpected bundle id: $id"; exit 1
+          fi
+
+          # A leftover x86_64 slice anywhere means the strip step regressed.
+          # Collect into a file rather than `exit 1` inside a `while` — that
+          # runs in a subshell and its exit status is discarded, so the check
+          # would silently always pass.
+          : > /tmp/fat.txt
+          find "$APP" -type f -print0 | while IFS= read -r -d "" f; do
+            if lipo -archs "$f" 2>/dev/null | tr " " "\n" | grep -qx x86_64; then
+              echo "$f" >> /tmp/fat.txt
+            fi
+          done
+          if [ -s /tmp/fat.txt ]; then
+            echo "x86_64 slices still present:"; cat /tmp/fat.txt; exit 1
+          fi
+
+          codesign --verify --deep --strict "$APP"
+          du -sh "$APP"

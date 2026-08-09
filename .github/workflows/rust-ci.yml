@@ -1,0 +1,44 @@
+name: rust-ci
+
+on:
+  pull_request:
+    paths:
+      - 'rust-sender/**'
+      - '.github/workflows/rust-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'rust-sender/**'
+      - '.github/workflows/rust-ci.yml'
+
+concurrency:
+  group: rust-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust-sender
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-sender
+
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+      # Includes the cross-language fountain fixture tests, which are the only
+      # automated check that the sender and the Flutter receiver still derive
+      # identical (degree, indices) from a seq. Debug profile on purpose:
+      # overflow checks are on, and an arithmetic overflow in the degree table
+      # was a real bug that release builds would have silently wrapped.
+      - run: cargo test
