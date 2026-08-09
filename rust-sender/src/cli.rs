@@ -27,6 +27,8 @@ pub struct SendArgs {
     pub slideshow: bool,
     pub reset: bool,
     pub resume: bool,
+    /// Skip the long-transfer confirmation prompt (for non-interactive use).
+    pub yes: bool,
 }
 
 pub enum MultiQr {
@@ -133,6 +135,7 @@ pub fn parse(args: &[String]) -> Command {
         slideshow: flag_is_true(&flags, "slideshow"),
         reset: flag_is_true(&flags, "reset"),
         resume: flag_is_true(&flags, "resume"),
+        yes: flag_is_true(&flags, "yes"),
     })
 }
 
@@ -165,6 +168,7 @@ pub fn print_usage() {
     println!("  --resume          Persist/restore slideshow position via .porter_history");
     println!("                    (off by default -- no disk trace unless requested)");
     println!("  --reset           Ignore any saved .porter_history position (needs --resume)");
+    println!("  --yes             Skip the confirmation prompt for very long transfers");
     println!();
     println!("\x1b[1mSubcommands:\x1b[0m");
     println!("  porter serve [--port=8080] [--host=0.0.0.0] [--output-dir=received]");

@@ -214,6 +214,77 @@ fn materialize_chunks(kind: &ChunkerKind) -> (Vec<String>, i32) {
     }
 }
 
+/// Warns before starting a transfer that will take impractically long.
+///
+/// QR is a low-bandwidth channel, so a large file runs for hours -- worth
+/// knowing before the slideshow starts rather than 90 minutes in. Fountain
+/// also needs materially more than K *distinct* symbols before peeling
+/// completes (measured 1.33x-1.69x K over K=50..20000), and a receiver
+/// rescanning a looping slideshow collects duplicates on top of that, so the
+/// realistic scan time is well above one pass of the pool.
+fn long_transfer_warning(kind: &ChunkerKind, frame_count: usize, speed: f64) -> Option<String> {
+    const WARN_ABOVE_SECS: f64 = 15.0 * 60.0;
+    /// Distinct symbols peeling needs, as a multiple of K. Measured across
+    /// K=50..20000 against the shared degree table: 1.33x-1.69x.
+    const PEELING_OVERHEAD: f64 = 1.5;
+
+    let one_pass_secs = frame_count as f64 * speed;
+    let (needed_secs, detail) = match kind {
+        ChunkerKind::Fountain(c) => {
+            // Peeling needs ~1.5x K distinct symbols (measured 1.33-1.69x);
+            // a receiver scanning a looping slideshow re-sees symbols it
+            // already has, so treat one full pass as the floor.
+            let to_decode = (c.k as f64 * PEELING_OVERHEAD * speed).max(one_pass_secs);
+            (
+                to_decode,
+                format!(
+                    "  fountain: {} blocks, {frame_count} frames in the pool\n  \
+                     the receiver needs ~{} distinct symbols before it can decode",
+                    c.k,
+                    (c.k as f64 * PEELING_OVERHEAD).ceil() as u64,
+                ),
+            )
+        }
+        ChunkerKind::Sequential(_) => (
+            one_pass_secs,
+            format!("  sequential: {frame_count} frames, every one must be scanned"),
+        ),
+    };
+
+    if needed_secs < WARN_ABOVE_SECS {
+        return None;
+    }
+
+    Some(format!(
+        "Warning: this transfer will take a long time.\n{detail}\n  \
+         estimated: {} at {speed:.2}s per frame (best case, no missed frames)",
+        format_duration(needed_secs),
+    ))
+}
+
+fn format_duration(secs: f64) -> String {
+    let total = secs.round() as u64;
+    match (total / 3600, (total % 3600) / 60) {
+        (0, m) => format!("{m}m"),
+        (h, m) => format!("{h}h {m}m"),
+    }
+}
+
+/// Blocks on a y/N answer. Returns false on EOF (non-interactive stdin), so
+/// a piped/CI invocation aborts rather than silently starting a multi-hour
+/// slideshow -- `--yes` is the way to opt in without a terminal.
+fn confirm_proceed() -> bool {
+    eprint!("Continue? [y/N] ");
+    use std::io::Write;
+    let _ = std::io::stderr().flush();
+
+    let mut answer = String::new();
+    match std::io::stdin().read_line(&mut answer) {
+        Ok(0) | Err(_) => false,
+        Ok(_) => matches!(answer.trim(), "y" | "Y" | "yes" | "Yes"),
+    }
+}
+
 fn run_sender(send_args: SendArgs) {
     let input = match gather_input(&send_args) {
         Ok(input) => input,
@@ -306,6 +377,14 @@ fn run_sender(send_args: SendArgs) {
         let saved = state::load_progress(send_args.resume, &input.file_name);
         if saved > 0 && saved < app.chunks.len() {
             app.index = saved;
+        }
+    }
+
+    if let Some(warning) = long_transfer_warning(&kind, app.chunks.len(), send_args.speed) {
+        eprintln!("{warning}");
+        if !send_args.yes && !confirm_proceed() {
+            eprintln!("Aborted.");
+            return;
         }
     }
 
