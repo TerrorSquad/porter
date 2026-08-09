@@ -73,7 +73,12 @@ pub fn build_degree_table(k: u32) -> DegreeTable {
         // makes most symbols XOR tens of thousands of blocks (catastrophically
         // slow and undecodable). Letting them stay 0 caps the max degree near
         // sqrt(K).
-        weights[i] = k / (i as u32 * (i as u32 - 1));
+        // i*(i-1) is computed in u64: it overflows u32 once i > ~65536,
+        // which a large file reaches (K in the hundreds of thousands) --
+        // that wrapped to a bogus small divisor and corrupted the degree
+        // distribution (and panicked in debug builds).
+        let denom = (i as u64) * (i as u64 - 1);
+        weights[i] = (k as u64 / denom) as u32;
     }
 
     let s = (2usize).max((k as f64).sqrt().floor() as usize);
@@ -198,22 +203,82 @@ impl FountainChunker {
     /// peeling recovery from the complete pool, K=1..2000+, with margin for
     /// symbol loss during scanning).
     pub fn calculate_layout(&mut self, rows: i32, options: &FountainLayoutOptions) {
-        // Header reserve for `F|seq|K|fileSize|id|` -- see fountain.ts's
-        // FOUNTAIN_HEADER_RESERVE.
-        const FOUNTAIN_HEADER_RESERVE: u32 = 32;
-
         let available_rows = rows - options.buffer;
         let max_ver = (available_rows * 2 - 17 - 4) / 4;
         self.version = max_ver.clamp(1, 40);
 
-        let char_capacity = crate::constants::get_max_capacity(self.version, options.ecc_level);
-        let working_capacity = char_capacity.saturating_sub(FOUNTAIN_HEADER_RESERVE);
-        self.block_size = (working_capacity as f64 * 0.75).floor() as usize;
-        if self.block_size == 0 {
-            self.block_size = 16;
+        // Fountain always sends a trailing CHECKSUM frame, a fixed ~78 bytes
+        // that a small version can't hold -- see the same guard in
+        // Chunker::calculate_layout for why the version is raised to fit.
+        {
+            let probe = self.checksum_frame();
+            while self.version < 40
+                && !crate::renderer::fits(&probe, options.ecc_level, self.version)
+            {
+                self.version += 1;
+            }
         }
 
+        let char_capacity = crate::constants::get_max_capacity(self.version, options.ecc_level);
         self.file_size = self.content.len();
+
+        // Header is `F|seq|K|fileSize|id|`. fountain.ts's fixed 32-char
+        // FOUNTAIN_HEADER_RESERVE is a guess that a multi-GB file blows
+        // past, producing a symbol qrcode rejects with DataTooLong. Compute
+        // it: seq runs to symbol_count (~3*K, see below), so it's the widest
+        // field after fileSize. K depends on block_size depends on the
+        // header, so iterate to a fixed point like the sequential chunker.
+        let header_size = |k: u32| -> u32 {
+            let seq_digits = k
+                .saturating_mul(3)
+                .max(k.saturating_add(20))
+                .to_string()
+                .len() as u32;
+            let k_digits = k.to_string().len() as u32;
+            let size_digits = self.file_size.to_string().len() as u32;
+            // 'F' + seq + K + fileSize + id + five '|'
+            1 + seq_digits + k_digits + size_digits + self.chunk_id.len() as u32 + 5
+        };
+
+        let block_for = |header: u32| -> usize {
+            // base64 pads to whole 4-char groups -- invert exactly rather
+            // than scaling by 0.75, which can overflow on the last group.
+            ((char_capacity.saturating_sub(header) as usize) / 4 * 3).max(1)
+        };
+
+        let mut block_size = block_for(header_size(1));
+        for _ in 0..4 {
+            let k = self.file_size.div_ceil(block_size).max(1) as u32;
+            let next = block_for(header_size(k));
+            if next == block_size {
+                break;
+            }
+            block_size = next;
+        }
+        self.block_size = block_size;
+
+        // Shrink until the widest-header symbol fits. With Byte-mode
+        // encoding (see renderer::encode) the capacity table is exact, so
+        // the computed size is already right and this loop normally makes
+        // zero adjustments -- it's a cheap guard against the header estimate
+        // drifting, not the mechanism the sizing relies on.
+        for _ in 0..12 {
+            self.finish_layout();
+            let widest = self.build_symbol(self.total_frames - 2);
+            if crate::renderer::fits(&widest, options.ecc_level, self.version) {
+                return;
+            }
+            let Some(shrunk) = self.block_size.checked_sub(3).filter(|&s| s > 0) else {
+                break;
+            };
+            self.block_size = shrunk;
+        }
+        self.finish_layout();
+    }
+
+    /// Derives K, the degree table, the source blocks and the frame count
+    /// from the current `block_size`. Re-run whenever `block_size` changes.
+    fn finish_layout(&mut self) {
         self.k = self.file_size.div_ceil(self.block_size).max(1) as u32;
 
         self.table = build_degree_table(self.k);
@@ -536,6 +601,35 @@ impl FountainDecoder {
 
 #[cfg(test)]
 mod tests {
+    /// Regression test: the fixed 32-char FOUNTAIN_HEADER_RESERVE is too
+    /// small for a large file (`F|seq|K|fileSize|id|` grows with all three
+    /// numbers), so symbols overflowed the QR capacity they were sized for
+    /// and qrcode rejected them with DataTooLong.
+    #[test]
+    fn header_reserve_holds_for_large_files() {
+        let content = vec![b'a'; 5_000_000];
+        let mut chunker = super::FountainChunker::new(content);
+        chunker.calculate_layout(
+            50,
+            &super::FountainLayoutOptions {
+                buffer: 10,
+                ecc_level: crate::qrtypes::EccLevel::L,
+            },
+        );
+
+        let capacity =
+            crate::constants::get_max_capacity(chunker.version, crate::qrtypes::EccLevel::L);
+        // Check the widest-header symbols: the highest seq values.
+        for seq in [0, 1, chunker.symbol_count / 2, chunker.symbol_count - 1] {
+            let symbol = chunker.build_symbol(seq);
+            assert!(
+                symbol.len() as u32 <= capacity,
+                "symbol at seq={seq} is {} bytes, exceeds capacity {capacity}",
+                symbol.len(),
+            );
+        }
+    }
+
     use super::*;
     use base64::Engine;
     use serde::Deserialize;
