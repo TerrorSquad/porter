@@ -12,12 +12,30 @@ run = "pnpm run build"
 
 [tasks.flutter-build]
 dir = "flutter"
-run = "flutter build macos --release"
+# `flutter build macos` has no architecture flag, and Flutter's prebuilt
+# frameworks are universal, so a Release bundle carries an x86_64 half that
+# never runs on Apple Silicon (44.7 MB -> 22 MB once stripped). ARCHS in
+# Runner/Configs/AppInfo.xcconfig only covers targets Xcode compiles, hence
+# the post-build strip.
+run = """
+flutter build macos --release
+ARCHS=arm64 \
+  BUILT_PRODUCTS_DIR="$PWD/build/macos/Build/Products/Release" \
+  WRAPPER_NAME=PorterRx.app \
+  sh macos/strip_x86_64.sh
+"""
+
+[tasks.flutter-test]
+dir = "flutter"
+run = "flutter analyze && flutter test"
 
 [tasks.flutter-install]
 dir = "flutter"
 depends = ["flutter-build"]
-run = "cp -R build/macos/Build/Products/Release/porter_receiver.app /Applications/"
+run = """
+rm -rf /Applications/PorterRx.app
+cp -R build/macos/Build/Products/Release/PorterRx.app /Applications/
+"""
 
 [tasks.rust-build]
 dir = "rust-sender"

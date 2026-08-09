@@ -63,7 +63,7 @@ flutter build appbundle --release
 
 ```bash
 flutter build macos --release
-# Output: build/macos/Build/Release/porter_receiver.app
+# Output: build/macos/Build/Products/Release/PorterRx.app
 ```
 
 ## Running During Development

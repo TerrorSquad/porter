@@ -5,10 +5,16 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = porter_receiver
+PRODUCT_NAME = PorterRx
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.porterReceiver
+PRODUCT_BUNDLE_IDENTIFIER = com.goranninkovic.porterrx
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Goran Ninkovic. All rights reserved.
+
+// Apple Silicon only. macOS already runs the arm64 slice natively on these
+// machines, so the x86_64 half of a universal build is dead weight: it
+// doubled the installed bundle (43 MB -> 22 MB without it) and buys nothing
+// unless an Intel Mac needs to run this. Drop this line to go universal again.
+ARCHS = arm64

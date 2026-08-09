@@ -1,4 +1,4 @@
-package com.example.porter_receiver
+package com.goranninkovic.porterrx
 
 import io.flutter.embedding.android.FlutterActivity
 
