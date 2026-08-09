@@ -21,11 +21,11 @@ class ScanningScreen extends StatefulWidget {
   State<ScanningScreen> createState() => _ScanningScreenState();
 }
 
-class _ScanningScreenState extends State<ScanningScreen> {
+class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObserver {
   late MobileScannerController controller;
   List<Map<String, String>> _availableCameras = [];
   String? _activeCameraId;
-  CameraResolutionPreset _activeResolution = CameraResolutionPreset.p720;
+  CameraResolutionPreset _activeResolution = CameraResolutionPreset.p1080;
   CameraFpsPreset _activeFps = CameraFpsPreset.auto;
   bool _ready = false;
   bool _restarting = false;
@@ -37,6 +37,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     controller = MobileScannerController(
       autoStart: false,
       cameraResolution: _activeResolution.size,
@@ -46,6 +47,10 @@ class _ScanningScreenState extends State<ScanningScreen> {
       // noDuplicates removes that artificial gate and scans as fast as
       // the camera/Vision pipeline allows.
       detectionSpeed: DetectionSpeed.noDuplicates,
+      // Porter only ever emits QR codes. Restricting the symbology set
+      // narrows the native decode request (Vision/ML Kit) to just QR
+      // instead of scanning for every supported barcode format each frame.
+      formats: const [BarcodeFormat.qrCode],
     );
     _initCamera();
 
@@ -61,7 +66,10 @@ class _ScanningScreenState extends State<ScanningScreen> {
 
   Future<void> _initCamera() async {
     final settings = context.read<SettingsProvider>();
+    final scanner = context.read<ScannerProvider>();
     await settings.ready;
+
+    unawaited(scanner.hydrateFromDisk(settings.outputDirectory));
 
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       final cameras = await controller.getAvailableCameras();
@@ -130,6 +138,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
       cameraResolution: resolution.size,
       cameraFps: fps.fps,
       detectionSpeed: DetectionSpeed.noDuplicates,
+      formats: const [BarcodeFormat.qrCode],
     );
     next.cameraId = _activeCameraId;
 
@@ -155,11 +164,22 @@ class _ScanningScreenState extends State<ScanningScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _rateTimer?.cancel();
     _focusIndicatorTimer?.cancel();
     _scannerProvider.onTransferComplete = null;
     controller.dispose();
     super.dispose();
+  }
+
+  /// Forces a metadata flush when the app is backgrounded, killed, or
+  /// otherwise loses foreground focus, so in-flight progress isn't lost
+  /// beyond the debounce window (see ChunkMetadataWriter).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _scannerProvider.flushAll();
+    }
   }
 
   /// Shows a save prompt when a transfer finishes, or saves it automatically
@@ -278,8 +298,20 @@ class _ScanningScreenState extends State<ScanningScreen> {
     final scanned = provider.totalScanned + provider.duplicatesSkipped;
     final rate = provider.scansPerSecond;
     final bytesRate = provider.bytesPerSecond;
+    final senderMs = provider.estimatedSenderIntervalMs;
+    // `rate` is the receiver's raw decode-attempt rate (duplicates and all —
+    // dominated by how many times each still-displayed frame gets re-decoded
+    // before the sender advances). `senderMs` estimates the sender's actual
+    // frame interval from new-chunk arrival gaps, so it's the number that
+    // actually answers "could the sender go faster?".
+    final senderPart = senderMs != null ? ' · sender ~${senderMs}ms/frame' : '';
+    final hintPart = switch (provider.speedHint) {
+      SpeedHint.increase => ' · could go faster ⚡',
+      SpeedHint.decrease => ' · try slowing down ⚠️',
+      null => '',
+    };
     return 'scanned $scanned · new ${provider.totalScanned} · dupes ${provider.duplicatesSkipped} · '
-        '${rate.toStringAsFixed(1)}/s · ${formatBytes(bytesRate.round())}/s';
+        '${rate.toStringAsFixed(1)}/s · ${formatBytes(bytesRate.round())}/s$senderPart$hintPart';
   }
 
   Widget _buildHud(BuildContext context, ScannerProvider provider, SettingsProvider settings) {

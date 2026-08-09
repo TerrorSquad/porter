@@ -195,23 +195,23 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 guard let self = self else {
                     return
                 }
-                
+
                 guard let buffer = self.latestBuffer else {
                     self.imagesCurrentlyBeingProcessed = false
                     return
                 }
-                
+
                 var cgImage: CGImage? = nil
-                
+
                 let status = VTCreateCGImageFromCVPixelBuffer(buffer, options: nil, imageOut: &cgImage)
-                
+
                 guard status == kCVReturnSuccess, let currentImage = cgImage else {
                     self.imagesCurrentlyBeingProcessed = false
                     return
                 }
-                
+
                 let imageRequestHandler = VNImageRequestHandler(cgImage: currentImage)
-                
+
                 do {
                     let barcodeRequest: VNDetectBarcodesRequest = VNDetectBarcodesRequest(completionHandler: { [weak self] (request, error) in
                         self?.imagesCurrentlyBeingProcessed = false
@@ -290,7 +290,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                     try imageRequestHandler.perform([barcodeRequest])
                 } catch let error {
                     imagesCurrentlyBeingProcessed = false
-                    
+
                     DispatchQueue.main.async {
                         self.sink?(FlutterError(
                             code: MobileScannerErrorCodes.BARCODE_ERROR,

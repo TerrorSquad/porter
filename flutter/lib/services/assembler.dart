@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import '../models/chunk.dart';
+import '../models/hydrated_transfer.dart';
 import '../models/transfer.dart';
 import 'chunk_parser.dart';
 import 'fountain_decoder.dart';
@@ -81,7 +83,14 @@ class Assembler {
       final transfer = getOrCreate(parsed.id, parsed.total, parsed.mode);
       if (parsed.total > transfer.total) transfer.total = parsed.total;
       if (transfer.isComplete) return false;
-      if (transfer.seenIndices.contains(parsed.index)) return false;
+      if (transfer.seenIndices.contains(parsed.index)) {
+        // Still a no-op for state, but tells the UI which transfer is
+        // actively being scanned — otherwise a resumed transfer whose next
+        // few scans all happen to be already-hydrated chunks would never
+        // surface as the active transfer until a genuinely new chunk lands.
+        onProgress?.call(transfer);
+        return false;
+      }
 
       final payload = _decodePayload(parsed.mode, parsed.payload);
       transfer.addChunk(parsed.index, payload);
@@ -104,6 +113,47 @@ class Assembler {
     );
   }
 
+  /// Rebuilds transfer state from previously-persisted chunks (see
+  /// `ChunkStorage.hydrateAll`), without re-running `ingest` for each chunk.
+  ///
+  /// Deliberately cheap: only marks indices as seen (from `.bin` filenames
+  /// already scanned by `ChunkStorage.hydrateAll`) rather than loading every
+  /// chunk's bytes into memory up front — a resumed transfer can have tens
+  /// of thousands of chunks, and reading them all eagerly for every
+  /// resumable transfer at once is expensive enough to destabilize the
+  /// isolate. `h.readChunk` is wired up as the transfer's lazy byte source,
+  /// used only if/when this transfer is actually assembled.
+  ///
+  /// Known limitation: for fountain-encoded transfers, only the already-
+  /// recovered source blocks are restored — the underlying `FountainDecoder`'s
+  /// partial peeling state (pending symbols, seen seqs) cannot be
+  /// reconstructed from recovered bytes alone, so a resumed fountain transfer
+  /// starts peeling from scratch. Already-recovered blocks are credited
+  /// immediately; new symbols scanned post-resume feed a fresh decoder as
+  /// normal. Worst case is redundantly re-scanning some already-seen symbols,
+  /// not a correctness loss — final SHA-256 verification still gates
+  /// completion.
+  Future<void> hydrate(List<HydratedTransfer> hydrated) async {
+    for (final h in hydrated) {
+      final transfer = getOrCreate(h.id, h.total, h.mode);
+      transfer.mode = h.mode;
+      transfer.encoding = h.encoding;
+      transfer.total = h.total;
+      transfer.fountainFileSize = h.fountainFileSize;
+      transfer.checksum = h.checksum;
+      transfer.transferDirPath = h.transferDirPath;
+      transfer.chunkReader = h.readChunk;
+      for (final index in h.seenIndices) {
+        transfer.markSeen(index);
+      }
+      onProgress?.call(transfer);
+      if (transfer.isComplete) {
+        transfer.completedAt = DateTime.now();
+        await _assemble(transfer);
+      }
+    }
+  }
+
   void reset([String? id]) {
     if (id != null) {
       transfers.remove(id);
@@ -117,15 +167,18 @@ class Assembler {
   void _tryComplete(Transfer t) {
     if (t.isComplete) {
       t.completedAt = DateTime.now();
-      _assemble(t);
+      // The live-ingest path always has every chunk's bytes already in
+      // memory (see ingest()), so this never actually awaits — fire-and
+      // -forget keeps _tryComplete/ingest synchronous for existing callers.
+      unawaited(_assemble(t));
     }
   }
 
-  void _assemble(Transfer t) {
+  Future<void> _assemble(Transfer t) async {
     try {
       final parts = <List<int>>[];
       for (int i = 1; i <= t.total; i++) {
-        final chunk = t.chunks[i];
+        final chunk = t.chunks[i] ?? await t.chunkReader?.call(i);
         if (chunk == null) throw Exception('Missing chunk $i');
         parts.add(chunk);
       }

@@ -140,6 +140,31 @@ void main() {
       expect(decoder.assemble().sublist(0, content.length), content);
     });
 
+    test('skips Gaussian elimination above maxEliminationMissingCount, staying stalled', () {
+      // A minimal-redundancy prefix (k=12, only 15 of the usual ~3K symbols)
+      // that pure peeling cannot resolve on its own — the default decoder
+      // needs GE to finish it (proven by the control assertion below). With
+      // the elimination cap lowered under the stall's missing-block count,
+      // GE must never fire, so the decoder stays incomplete.
+      final content = List<int>.generate(180, (i) => (i * 37 + 25) & 0xff);
+      const blockSize = 16;
+      final k = (content.length / blockSize).ceil();
+      expect(k, 12);
+      final symbols = _encode(content, blockSize, k * 3).sublist(0, 15);
+
+      final withGE = FountainDecoder(k: k, blockSize: blockSize);
+      for (final s in symbols) {
+        withGE.addSymbol(s.key, s.value);
+      }
+      expect(withGE.isComplete, true); // control: GE is genuinely load-bearing here
+
+      final capped = FountainDecoder(k: k, blockSize: blockSize, maxEliminationMissingCount: 2);
+      for (final s in symbols) {
+        capped.addSymbol(s.key, s.value);
+      }
+      expect(capped.isComplete, false);
+    });
+
     test('k=1 recovers from a single degree-1 symbol', () {
       final content = utf8.encode('tiny');
       const blockSize = 16;

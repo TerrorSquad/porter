@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:porter_receiver/models/hydrated_transfer.dart';
 import 'package:porter_receiver/models/transfer.dart';
 import 'package:porter_receiver/services/assembler.dart';
 import 'package:porter_receiver/services/fountain_codec.dart';
@@ -98,6 +99,22 @@ void main() {
       final t = assembler.transfers['AB']!;
       expect(t.seenIndices, {1});
       expect(t.chunks.length, 1);
+    });
+
+    test('a duplicate scan still fires onProgress, so a resumed transfer '
+        'surfaces as active even before any new chunk arrives', () {
+      final progressed = <String>[];
+      final assembler = Assembler(onProgress: (t) => progressed.add(t.id));
+
+      // Simulate a hydrated transfer: index 1 already seen, nothing ingested
+      // through this Assembler instance yet.
+      final transfer = assembler.getOrCreate('AB', 2, 'T');
+      transfer.markSeen(1);
+
+      // Re-scanning the already-seen chunk is a no-op for state...
+      expect(assembler.ingest('1|2|T|AB|Hello'), false);
+      // ...but still reports which transfer is being actively scanned.
+      expect(progressed, ['AB']);
     });
 
     test('decompresses gzip-mode payloads', () {
@@ -247,6 +264,65 @@ void main() {
 
       assembler.reset();
       expect(assembler.transfers, isEmpty);
+    });
+
+    group('hydrate', () {
+      test('populates transfers and credits seenIndices cheaply, without reading bytes', () async {
+        final progressed = <Transfer>[];
+        var readChunkCalls = 0;
+        final assembler = Assembler(onProgress: progressed.add);
+
+        await assembler.hydrate([
+          HydratedTransfer(
+            id: 'AB',
+            mode: 'T',
+            encoding: 'sequential',
+            total: 3,
+            fountainFileSize: null,
+            checksum: null,
+            transferDirPath: '/tmp/AB',
+            seenIndices: {1, 3},
+            readChunk: (i) async {
+              readChunkCalls++;
+              return utf8.encode(i == 1 ? 'Hi' : 'Yo');
+            },
+          ),
+        ]);
+
+        final t = assembler.transfers['AB']!;
+        expect(t.seenIndices, {1, 3});
+        expect(t.total, 3);
+        expect(t.transferDirPath, '/tmp/AB');
+        expect(progressed.single.id, 'AB');
+        // Incomplete (2 of 3) — hydrate must not have read any chunk bytes.
+        expect(readChunkCalls, 0);
+      });
+
+      test('triggers completion when the hydrated set is already complete', () async {
+        Transfer? completed;
+        final assembler = Assembler(onComplete: (t) => completed = t);
+
+        final content = utf8.encode('Hello');
+        final checksum = sha256.convert(content).toString();
+        await assembler.hydrate([
+          HydratedTransfer(
+            id: 'AB',
+            mode: 'T',
+            encoding: 'sequential',
+            total: 1,
+            fountainFileSize: null,
+            checksum: checksum,
+            transferDirPath: '/tmp/AB',
+            seenIndices: {1},
+            readChunk: (i) async => content,
+          ),
+        ]);
+
+        expect(completed, isNotNull);
+        expect(completed!.isComplete, true);
+        expect(completed!.verified, true);
+        expect(completed!.assembled, content);
+      });
     });
   });
 }

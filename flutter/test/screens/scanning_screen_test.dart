@@ -6,10 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:porter_receiver/models/progress_snapshot.dart';
 import 'package:porter_receiver/providers/scanner_provider.dart';
 import 'package:porter_receiver/providers/settings_provider.dart';
 import 'package:porter_receiver/screens/scanning_screen.dart';
 import 'package:porter_receiver/screens/settings_screen.dart';
+import 'package:porter_receiver/services/assembler_worker.dart';
 
 const _mobileScannerMethodChannel = MethodChannel(
   'dev.steenbakker.mobile_scanner/scanner/method',
@@ -66,6 +68,30 @@ void _setUpPlatformMocks() {
   });
 }
 
+/// Builds the [ProgressSnapshotEvent] a worker isolate would post after
+/// ingesting chunk 1 of 2 (mode 'T', id 'AB') — used by widget tests to drive
+/// [ScannerProvider] state via [ScannerProvider.applyWorkerEvent] instead of
+/// spawning a real isolate (unreliable to tear down inside the headless
+/// `flutter_tester` test shell).
+ProgressSnapshotEvent _oneOfTwoChunksSnapshot() => ProgressSnapshotEvent(
+      ProgressSnapshot(
+        id: 'AB',
+        total: 2,
+        mode: 'T',
+        encoding: 'sequential',
+        fountainFileSize: null,
+        fountainSymbols: 0,
+        seenIndices: const [1],
+        receivedBytes: 5,
+        checksum: null,
+        verified: null,
+        error: null,
+        isComplete: false,
+        createdAt: DateTime.now(),
+        completedAt: null,
+      ),
+    );
+
 /// Pumps [ScanningScreen] with the given [scanner] provider.
 Future<void> pumpScreen(
   WidgetTester tester,
@@ -97,7 +123,9 @@ void main() {
     setUp(_setUpPlatformMocks);
 
     testWidgets('shows the app bar title and an empty transfers badge', (tester) async {
-      await pumpScreen(tester, ScannerProvider());
+      final scanner = ScannerProvider();
+      addTearDown(scanner.dispose);
+      await pumpScreen(tester, scanner);
 
       expect(find.text('Porter Receiver'), findsOneWidget);
 
@@ -106,9 +134,10 @@ void main() {
     });
 
     testWidgets('shows the transfers badge count once a transfer exists', (tester) async {
-      final tmpDir = Directory.systemTemp.createTempSync('scanning_screen_test_');
       final scanner = ScannerProvider();
-      scanner.ingestQR('1|2|T|AB|Hello', outputDirectory: tmpDir.path);
+      addTearDown(scanner.dispose);
+      scanner.applyWorkerEvent(ScanCountedEvent(true));
+      scanner.applyWorkerEvent(_oneOfTwoChunksSnapshot());
 
       await pumpScreen(tester, scanner);
 
@@ -118,7 +147,9 @@ void main() {
     });
 
     testWidgets('idle state shows the placeholder and HUD text', (tester) async {
-      await pumpScreen(tester, ScannerProvider());
+      final scanner = ScannerProvider();
+      addTearDown(scanner.dispose);
+      await pumpScreen(tester, scanner);
 
       expect(find.text('Point camera at QR codes'), findsOneWidget);
       expect(find.text('scanned 0 · new 0 · dupes 0 · 0.0/s · 0 B/s'), findsOneWidget);
@@ -126,9 +157,9 @@ void main() {
     });
 
     testWidgets('active transfer shows progress and the chunk count', (tester) async {
-      final tmpDir = Directory.systemTemp.createTempSync('scanning_screen_test_');
       final scanner = ScannerProvider();
-      scanner.ingestQR('1|2|T|AB|Hello', outputDirectory: tmpDir.path);
+      addTearDown(scanner.dispose);
+      scanner.applyWorkerEvent(_oneOfTwoChunksSnapshot());
 
       await pumpScreen(tester, scanner);
 
@@ -139,6 +170,7 @@ void main() {
 
     testWidgets('relay dot reflects relayLastOk', (tester) async {
       final scanner = ScannerProvider();
+      addTearDown(scanner.dispose);
       await pumpScreen(tester, scanner, relayUrl: 'http://example.com');
 
       Text dot() => tester.widget<Text>(find.text('●'));
@@ -156,7 +188,9 @@ void main() {
     });
 
     testWidgets('Settings action opens the settings screen', (tester) async {
-      await pumpScreen(tester, ScannerProvider());
+      final scanner = ScannerProvider();
+      addTearDown(scanner.dispose);
+      await pumpScreen(tester, scanner);
 
       await tester.tap(find.byTooltip('Settings'));
       await tester.pump();

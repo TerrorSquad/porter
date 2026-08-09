@@ -24,9 +24,14 @@ class _PendingSymbol {
 /// [k] source blocks. The (degree, indices) mapping for each symbol is derived
 /// from its `seq` via [sampleIndices], so it is never transmitted — it must be
 /// regenerated identically here, which the shared [fountain_codec] guarantees.
+/// Above this many unresolved blocks, Gaussian elimination's O(N^2)/O(N^3)
+/// cost is no longer worth attempting; rely on peeling alone.
+const int kDefaultMaxEliminationMissingCount = 500;
+
 class FountainDecoder {
   final int k;
   final int blockSize;
+  final int maxEliminationMissingCount;
   final DegreeTable _table;
 
   /// 1-based source index -> recovered block bytes.
@@ -38,8 +43,11 @@ class FountainDecoder {
   /// Symbols not yet reduced to a single unresolved index.
   final List<_PendingSymbol> _pending = [];
 
-  FountainDecoder({required this.k, required this.blockSize})
-      : _table = buildDegreeTable(k);
+  FountainDecoder({
+    required this.k,
+    required this.blockSize,
+    this.maxEliminationMissingCount = kDefaultMaxEliminationMissingCount,
+  }) : _table = buildDegreeTable(k);
 
   /// Number of source blocks recovered so far.
   int get recoveredCount => _recovered.length;
@@ -114,8 +122,13 @@ class FountainDecoder {
     // didn't let peeling advance yet enough independent equations exist to
     // possibly solve the residual, fall back to Gaussian elimination over
     // GF(2). Gating on a stalled peel keeps GE off the common fast path, and
-    // peeling having shrunk _pending to the small core keeps it cheap.
-    if (newlyRecovered.isEmpty && !isComplete && _pending.length >= _missingCount) {
+    // peeling having shrunk _pending to the small core keeps it cheap. Above
+    // maxEliminationMissingCount, GE's O(N^2)/O(N^3) cost is skipped entirely
+    // — peeling alone must carry large-K transfers to avoid UI-thread stalls.
+    if (newlyRecovered.isEmpty &&
+        !isComplete &&
+        _missingCount < maxEliminationMissingCount &&
+        _pending.length >= _missingCount) {
       _solveResidualByElimination(newlyRecovered);
     }
 

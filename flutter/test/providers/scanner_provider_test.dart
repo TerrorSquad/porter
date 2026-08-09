@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:porter_receiver/providers/scanner_provider.dart';
 
 /// Polls [condition] until it becomes true or [timeout] elapses.
-Future<void> waitFor(bool Function() condition, {Duration timeout = const Duration(seconds: 2)}) async {
+Future<void> waitFor(bool Function() condition, {Duration timeout = const Duration(seconds: 5)}) async {
   final deadline = DateTime.now().add(timeout);
   while (!condition()) {
     if (DateTime.now().isAfter(deadline)) {
@@ -17,45 +17,55 @@ Future<void> waitFor(bool Function() condition, {Duration timeout = const Durati
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  // The test binding installs an HttpOverrides that fakes HttpClient (always
+  // 400) — the relay tests below need a real client to talk to their local
+  // loopback HttpServer, so restore normal HTTP behavior for this suite.
+  HttpOverrides.global = null;
+
   group('ScannerProvider', () {
     late Directory tmpDir;
+    late ScannerProvider provider;
 
-    setUp(() {
+    setUp(() async {
       tmpDir = Directory.systemTemp.createTempSync('porter_scanner_test_');
+      provider = ScannerProvider();
+      await provider.ready;
     });
 
     tearDown(() async {
+      provider.dispose();
       await tmpDir.delete(recursive: true);
     });
 
     test('ingestQR tracks new chunks, duplicates and completion', () async {
-      final provider = ScannerProvider();
       String? completedId;
       provider.onTransferComplete = (t) => completedId = t.id;
 
       provider.ingestQR('1|2|T|AB|Hello', outputDirectory: tmpDir.path);
-      expect(provider.totalScanned, 1);
+      await waitFor(() => provider.totalScanned == 1);
       expect(provider.duplicatesSkipped, 0);
       expect(provider.activeTransfer?.id, 'AB');
 
       // Same chunk again is a duplicate.
       provider.ingestQR('1|2|T|AB|Hello', outputDirectory: tmpDir.path);
+      await waitFor(() => provider.duplicatesSkipped == 1);
       expect(provider.totalScanned, 1);
-      expect(provider.duplicatesSkipped, 1);
 
       provider.ingestQR('2|2|T|AB|World', outputDirectory: tmpDir.path);
+      await waitFor(() => completedId == 'AB');
       expect(provider.totalScanned, 2);
       expect(provider.allTransfers['AB']?.isComplete, true);
-      expect(completedId, 'AB');
 
       // Let the async chunk-storage writes settle before tmpDir is removed.
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
 
     test('resetAll clears scan stats, transfers and relay state', () async {
-      final provider = ScannerProvider();
       provider.ingestQR('1|2|T|AB|Hello', outputDirectory: tmpDir.path);
+      await waitFor(() => provider.totalScanned == 1);
       provider.ingestQR('1|2|T|AB|Hello', outputDirectory: tmpDir.path); // duplicate
+      await waitFor(() => provider.duplicatesSkipped == 1);
 
       provider.resetAll();
 
@@ -68,9 +78,9 @@ void main() {
     });
 
     test('reset(id) clears only the matching transfer', () async {
-      final provider = ScannerProvider();
       provider.ingestQR('1|2|T|AB|Hello', outputDirectory: tmpDir.path);
       provider.ingestQR('1|1|T|CD|Solo', outputDirectory: tmpDir.path);
+      await waitFor(() => provider.allTransfers.containsKey('AB') && provider.allTransfers.containsKey('CD'));
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       // The most recently ingested chunk (CD) is the active transfer.
@@ -81,12 +91,110 @@ void main() {
       expect(provider.activeTransfer, null);
     });
 
-    test('scansPerSecond and bytesPerSecond reflect recent activity', () {
-      final provider = ScannerProvider();
+    test('scansPerSecond and bytesPerSecond reflect recent activity', () async {
       provider.ingestQR('1|2|T|AB|Hello', outputDirectory: tmpDir.path);
 
-      expect(provider.scansPerSecond, greaterThan(0));
-      expect(provider.bytesPerSecond, greaterThan(0));
+      await waitFor(() => provider.scansPerSecond > 0 && provider.bytesPerSecond > 0);
+    });
+
+    test('estimatedSenderIntervalMs is null until enough new chunks arrive, then '
+        'reflects new-chunk gaps and ignores duplicate scans', () async {
+      expect(provider.estimatedSenderIntervalMs, null);
+
+      // Duplicates alone (no distinct new chunks yet) must not produce an
+      // estimate — they say nothing about how fast the sender is advancing.
+      provider.ingestQR('1|5|T|AB|One', outputDirectory: tmpDir.path);
+      await waitFor(() => provider.totalScanned == 1);
+      for (var i = 0; i < 5; i++) {
+        provider.ingestQR('1|5|T|AB|One', outputDirectory: tmpDir.path); // duplicate
+      }
+      await waitFor(() => provider.duplicatesSkipped == 5);
+      expect(provider.estimatedSenderIntervalMs, null);
+
+      // Distinct new chunks, spaced ~30ms apart, give a real estimate.
+      for (final line in ['2|5|T|AB|Two', '3|5|T|AB|Thr', '4|5|T|AB|Fou']) {
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        provider.ingestQR(line, outputDirectory: tmpDir.path);
+      }
+      await waitFor(() => provider.totalScanned == 4);
+
+      final estimate = provider.estimatedSenderIntervalMs;
+      expect(estimate, isNotNull);
+      expect(estimate!, greaterThan(0));
+      // Loose bound — real timing, not exact — just proves it's in the
+      // right ballpark for a ~30ms-spaced sequence, not e.g. milliseconds
+      // from the unrelated first chunk/duplicate burst.
+      expect(estimate, lessThan(500));
+    });
+
+    test('speedHint suggests increasing sender speed when duplicates dominate', () async {
+      expect(provider.speedHint, null);
+
+      // One new chunk, then many duplicate scans of it (attempts/frame high)
+      // — the classic "receiver is idling between sender frame changes" case.
+      provider.ingestQR('1|5|T|AB|One', outputDirectory: tmpDir.path);
+      await waitFor(() => provider.totalScanned == 1);
+      for (var i = 0; i < 10; i++) {
+        provider.ingestQR('1|5|T|AB|One', outputDirectory: tmpDir.path);
+      }
+      await waitFor(() => provider.duplicatesSkipped == 10);
+
+      for (final line in ['2|5|T|AB|Two', '3|5|T|AB|Thr']) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        provider.ingestQR(line, outputDirectory: tmpDir.path);
+      }
+      await waitFor(() => provider.totalScanned == 3);
+
+      expect(provider.speedHint, SpeedHint.increase);
+    });
+
+    test('speedHint suggests slowing down when almost every scan is a new chunk', () async {
+      // Every scan lands a new chunk — attempts/frame near 1, no slack.
+      for (final line in ['1|5|T|AB|One', '2|5|T|AB|Two', '3|5|T|AB|Thr', '4|5|T|AB|Fou']) {
+        provider.ingestQR(line, outputDirectory: tmpDir.path);
+      }
+      await waitFor(() => provider.totalScanned == 4);
+
+      expect(provider.speedHint, SpeedHint.decrease);
+    });
+
+    test('hydrateFromDisk resumes an interrupted transfer without re-ingesting', () async {
+      // Simulate a transfer that was killed after 2 of 3 chunks were saved.
+      provider.ingestQR('1|3|T|AB|One', outputDirectory: tmpDir.path);
+      provider.ingestQR('2|3|T|AB|Two', outputDirectory: tmpDir.path);
+      await waitFor(() => provider.totalScanned == 2);
+      provider.flushAll();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Fresh provider, as if the app was relaunched.
+      final resumed = ScannerProvider();
+      await resumed.ready;
+      addTearDown(resumed.dispose);
+
+      await resumed.hydrateFromDisk(tmpDir.path);
+      await waitFor(() => resumed.allTransfers.containsKey('AB'));
+
+      expect(resumed.allTransfers['AB']?.seenIndices, {1, 2});
+      // Hydration alone shouldn't surface the transfer as "active" before any
+      // scanning happens in this session.
+      expect(resumed.activeTransfer, null);
+
+      // Re-scanning an already-hydrated chunk is a duplicate for state, but
+      // must still surface the transfer as active — otherwise a resumed
+      // transfer whose next few scans all happen to already be hydrated
+      // would appear to do nothing on screen.
+      resumed.ingestQR('1|3|T|AB|One', outputDirectory: tmpDir.path);
+      await waitFor(() => resumed.activeTransfer?.id == 'AB');
+
+      // Scanning the missing chunk completes the transfer using only new
+      // information — no re-scan of chunks 1/2 was needed.
+      String? completedId;
+      resumed.onTransferComplete = (t) => completedId = t.id;
+      resumed.ingestQR('3|3|T|AB|Three', outputDirectory: tmpDir.path);
+      await waitFor(() => completedId == 'AB');
+      expect(resumed.allTransfers['AB']?.isComplete, true);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     });
 
     group('relay', () {
@@ -113,7 +221,6 @@ void main() {
           await req.response.close();
         });
 
-        final provider = ScannerProvider();
         provider.ingestQR('1|2|T|AB|Hello', relayUrl: url, outputDirectory: tmpDir.path);
 
         await waitFor(() => provider.relayLastOk != null);
@@ -134,7 +241,6 @@ void main() {
           await req.response.close();
         });
 
-        final provider = ScannerProvider();
         provider.ingestQR('1|2|T|AB|Hello', relayUrl: url, outputDirectory: tmpDir.path);
 
         await waitFor(() => provider.relayLastOk != null);
@@ -152,7 +258,6 @@ void main() {
           await req.response.close();
         });
 
-        final provider = ScannerProvider();
         provider.ingestQR('1|2|T|AB|Hello', relayUrl: url, outputDirectory: tmpDir.path);
 
         await waitFor(() => provider.relayLastOk != null);
@@ -176,7 +281,6 @@ void main() {
           await req.response.close();
         });
 
-        final provider = ScannerProvider();
         provider.ingestQR('1|2|T|AB|Hello', relayUrl: url, outputDirectory: tmpDir.path);
 
         await waitFor(() => provider.relayStates['AB']?.complete == true);
