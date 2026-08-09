@@ -49,15 +49,27 @@ fountain, and checksum frames) at `POST /upload`; auto-joins completed
 transfers. Built on `axum` — see the ADR above for why over hand-rolled
 `hyper`.
 
-## What's not here
+### `porter join`
 
-`porter join` (multi-part joiner) stays in [`nodejs/`](../nodejs) —
-deliberately not ported yet, see the ADR's open questions.
+```bash
+porter-sender join <transfer-dir|file|id> [...] [--output <path>] [--force] [--no-verify]
+```
+
+Reassembles the `.partaa`, `.partab`, … files a receiver wrote into the
+original file, verifying against `<base>.sha256` when one is present. The
+target may be a transfer directory, any file inside one, or a bare
+transfer id relative to the working directory. Output goes to
+`<base>.joined` next to the parts unless `--output` says otherwise; an
+existing destination is never overwritten without `--force`.
+
+Ported from `joiner.ts` in [ADR-0006](../docs/adr/0006-port-join-to-rust.md),
+which also documents the one deliberate behavioural difference (stray
+files sharing a `.part` prefix are skipped rather than concatenated in).
 
 ## Development
 
 ```bash
-cargo test              # 11 tests, includes cross-language fixture parity
+cargo test              # 31 tests, includes cross-language fixture parity
                          # against flutter/test/fixtures/fountain_sample.json
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check

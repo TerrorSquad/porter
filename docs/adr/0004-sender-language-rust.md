@@ -118,8 +118,9 @@ today).
 
 ## Open questions
 
-- Whether/when `porter join` gets ported, and to what shape — deliberately
-  deferred, not decided here.
+- ~~Whether/when `porter join` gets ported, and to what shape~~ — resolved
+  by [ADR-0006](0006-port-join-to-rust.md): ported to `rust-sender/src/join.rs`,
+  which makes `nodejs/` fully superseded rather than kept indefinitely.
 - Whether the Rust sender's fountain/QR logic should ever become a shared
   crate — explicitly a non-goal for the initial port; revisit only if a
   second consumer actually materializes.

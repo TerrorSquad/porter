@@ -2,6 +2,7 @@ mod chunker;
 mod cli;
 mod constants;
 mod fountain;
+mod join;
 mod qrtypes;
 mod renderer;
 mod serve;
@@ -36,6 +37,10 @@ fn main() {
     match cli::parse(&args) {
         Command::Send(send_args) => run_sender(send_args),
         Command::Serve(serve_args) => run_serve(serve_args),
+        // join owns its own arg parsing (space-separated `--output <path>`,
+        // unlike the sender's `--flag=value`), so cli::parse hands the raw
+        // tail straight through.
+        Command::Join(join_args) => std::process::exit(join::run(&join_args)),
     }
 }
 

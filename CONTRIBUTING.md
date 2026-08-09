@@ -5,9 +5,9 @@
 - Rust (stable) for the sender — `rust-sender/`.
 - Flutter (stable channel) for the receiver app.
 - Node + pnpm (versions pinned in `mise.toml` — `mise install` if you use
-  mise) for `nodejs/` (**deprecated**; only `porter join` is still current,
-  see `docs/adr/0004-*.md`) and for the repo-wide JS tooling (prettier,
-  eslint, markdownlint), which all lives in `nodejs/`.
+  mise) for the repo-wide JS tooling (prettier, eslint, markdownlint),
+  which lives in `nodejs/`. The `nodejs/` package itself is **deprecated
+  and fully superseded** by `rust-sender/` — see `docs/adr/0006-*.md`.
 
 ## Getting started
 

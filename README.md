@@ -13,7 +13,7 @@ porter-sender myfile.txt
 | ------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | **[`rust-sender/`](rust-sender/README.md)** | Terminal QR-slideshow sender + `porter serve` HTTP receiver, single static binary | Active — the primary sender going forward                                                                 |
 | **[`flutter/`](flutter/README.md)**         | Receiver app (Android + macOS), scans QR frames and reassembles the file          | Active — the real receiver, in daily use                                                                  |
-| **[`nodejs/`](nodejs/README.md)**           | Original TypeScript sender — **deprecated**                                       | Deprecated, not in CI. Only `porter join` is still current; `serve` and the sender live in `rust-sender/` |
+| **[`nodejs/`](nodejs/README.md)**           | Original TypeScript sender — **deprecated**                                       | Fully superseded by `rust-sender/`, not in CI. Kept as a reference only                                   |
 
 Why the sender moved to Rust: a single static binary needs no Node.js
 runtime on the sending machine, which matters for an air-gapped tool. See

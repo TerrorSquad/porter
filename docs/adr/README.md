@@ -12,5 +12,6 @@ choice.
 | [0003](./0003-disk-hydration.md)         | Disk hydration design                                      | Accepted                          |
 | [0004](./0004-sender-language-rust.md)   | Sender language — TypeScript → Rust                        | Accepted (QR-display sender only) |
 | [0005](./0005-mobile-scanner-pin.md)     | `mobile_scanner` stays pinned at the vendored fork (7.2.0) | Accepted (known gap)              |
+| [0006](./0006-port-join-to-rust.md)      | `porter join` ported to Rust; `nodejs/` fully superseded   | Accepted (resolves 0004's defer)  |
 
 See also: [`../../flutter/docs/architecture.md`](../../flutter/docs/architecture.md) (receiver architecture) · [`../superpowers/specs/`](../superpowers/specs/) (implementation specs).

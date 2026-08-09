@@ -28,15 +28,15 @@ Node.js runtime needed. See `docs/adr/0004-*.md` for why it replaced the
 TypeScript sender. `cargo test` / `cargo clippy --all-targets` / `cargo
 fmt --check` from `rust-sender/`; `mise run rust-*` tasks from the root.
 
-## Sender, legacy (`nodejs/`) — DEPRECATED
+## Sender, legacy (`nodejs/`) — DEPRECATED, FULLY SUPERSEDED
 
 TypeScript CLI (`porter.ts`), built with Rollup to a standalone `.mjs`.
-Deprecated and not covered by CI. `porter serve` **is** ported (see
-`rust-sender/src/serve.rs`); `porter join` (`joiner.ts`, 178 lines) is the
-only subcommand with no Rust equivalent and the only reason this package
-still exists. The sender path prints a deprecation warning at startup.
-Don't build new work here — port to `rust-sender/` instead. `pnpm test`
-(node's `--test` runner) from `nodejs/`.
+Deprecated and not covered by CI. Every feature is now in Rust: the
+sender, `porter serve` (`serve.rs`) and `porter join` (`join.rs`, see
+ADR-0006). Nothing here is the only implementation of anything anymore —
+it is kept as a reference only, and the sender path prints a deprecation
+warning at startup. Don't build new work here; change `rust-sender/`.
+`pnpm test` (node's `--test` runner) from `nodejs/`.
 
 ## Receiver (`flutter/`)
 

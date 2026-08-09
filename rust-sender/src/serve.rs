@@ -57,7 +57,7 @@ fn chunk_file_base(id: &str) -> String {
     }
 }
 
-fn alpha_part_suffix(index: i64) -> String {
+pub fn alpha_part_suffix(index: i64) -> String {
     if index < 0 {
         return "aa".to_string();
     }

@@ -2,14 +2,19 @@
 //! ~15 flags with simple `--flag=value`/`--flag` shapes don't need a
 //! dependency like clap. Mirrors the flag surface of nodejs/src/porter.ts
 //! (sender) and runReceiver's flag reads in nodejs/src/lib/receiver.ts
-//! (serve). `join` is not a recognized subcommand -- porter join stays
-//! TypeScript-only (see docs/adr/0004-sender-language-rust.md).
+//! (serve) and joiner.ts (join). `join` takes a space-separated
+//! `--output <path>`, so its tail is handed to join::parse_join_args rather
+//! than the `--flag=value` parser here.
 
 use crate::qrtypes::EccLevel;
 
 pub enum Command {
     Send(SendArgs),
     Serve(ServeArgs),
+    /// Raw argv tail after `join`; parsed by join::parse_join_args, which
+    /// handles the space-separated `--output <path>` shape this module's
+    /// `--flag=value` parser cannot express.
+    Join(Vec<String>),
 }
 
 pub struct SendArgs {
@@ -66,6 +71,10 @@ fn flag_is_true(flags: &std::collections::HashMap<String, String>, key: &str) ->
 }
 
 pub fn parse(args: &[String]) -> Command {
+    if args.first().map(String::as_str) == Some("join") {
+        return Command::Join(args[1..].to_vec());
+    }
+
     if args.first().map(String::as_str) == Some("serve") {
         let rest = &args[1..];
         let flags = parse_flags(rest);
@@ -175,6 +184,9 @@ pub fn print_usage() {
     println!("              Start an HTTP receiver. Accepts QR scan JSON uploads,");
     println!("              raw file uploads, and multipart/form-data.");
     println!("              Reconstructs multi-part and fountain transfers automatically.");
+    println!("  porter join <transfer-dir|file|id> [...] [--output <path>] [--force]");
+    println!("              [--no-verify]");
+    println!("              Join previously received .partXX files into a single file.");
 }
 
 #[cfg(test)]
