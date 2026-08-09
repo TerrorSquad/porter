@@ -3,12 +3,6 @@
   "formatter": "language_server",
   "languages": {
     "Dart": { "language_servers": ["dart"] },
-    "TypeScript": {
-      "formatter": { "language_server": { "name": "eslint" } }
-    },
-    "JavaScript": {
-      "formatter": { "language_server": { "name": "eslint" } }
-    },
     "Rust": { "language_servers": ["rust-analyzer"] }
   }
 }

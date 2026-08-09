@@ -1,4 +1,4 @@
-# ADR-0006: Port `porter join` to Rust, retiring the last TypeScript feature
+# ADR-0006: Port `porter join` to Rust and remove JavaScript from the repo
 
 Date: 2026-08-10
 
@@ -22,8 +22,10 @@ networking, no terminal rendering, no wire-format compatibility surface.
 
 ## Decision
 
-Port `porter join` to Rust as `rust-sender/src/join.rs`, and treat the
-TypeScript sender package as fully superseded.
+Port `porter join` to Rust as `rust-sender/src/join.rs`, then delete
+`nodejs/` entirely — the package, its tests, and the prettier / eslint /
+markdownlint toolchain it hosted. Porter becomes a two-language repo
+(Rust sender, Dart receiver) with no JavaScript.
 
 `join` keeps its own argument parser rather than reusing `cli.rs`'s flag
 map. `joiner.ts` takes a space-separated `--output <path>` (plus `-o`/`-f`
@@ -64,10 +66,24 @@ difference, and it is a bugfix, not a port artifact.
 
 - `porter join` no longer requires Node.js. The Rust binary now covers
   every feature the TypeScript package had.
-- `nodejs/` is deprecated in full — the reason ADR-0004 gave for keeping
-  it ("stays in the repo for `join` indefinitely") no longer holds. It is
-  retained for reference only, is not covered by CI, and prints a
-  deprecation warning on the sender path.
+- **`nodejs/` was deleted outright**, along with the entire JavaScript
+  toolchain it hosted — prettier, eslint, markdownlint, `pnpm-lock.yaml`,
+  `pnpm-workspace.yaml`. The reason ADR-0004 gave for keeping the
+  directory ("stays in the repo for `join` indefinitely") no longer held
+  once `join` was ported, and nothing else depended on it: the
+  cross-language fixture is committed under `flutter/test/` and read
+  directly by the Rust and Dart suites, no CI workflow referenced Node,
+  and eslint had no `.ts` files left to lint outside the package being
+  deleted. The repo now has no JavaScript at all.
+- Formatting is per-language and self-contained: `cargo fmt`,
+  `dart format`, and `.editorconfig` for markup. **Nothing formats or
+  lints Markdown anymore** — that capability was lost deliberately, as
+  the cost of keeping a Node install alive for it was judged higher than
+  the benefit. Reintroducing it means reintroducing a JS runtime, so
+  prefer a Rust/Go-native Markdown linter if it is ever wanted back.
+- The `forge` pre-commit hook drops its three Node tools and runs
+  `cargo fmt` + `dart format` instead, so committing no longer depends on
+  `node_modules` existing.
 - Parity was verified by running both implementations against identical
   transfer directories and diffing stdout, exit codes, and output bytes:
   happy path, missing-part gap warnings, checksum mismatch, `--no-verify`,
@@ -77,6 +93,7 @@ difference, and it is a bugfix, not a port artifact.
 - The joiner's tests moved from trapping `process.exit` and monkey-patching
   `console` (what `joiner.test.ts` had to do) to asserting on a returned
   `JoinOutcome`. Same coverage, no global state.
-- Deleting `nodejs/` is now possible but is not part of this decision —
-  the code is kept as a reference implementation until someone wants the
-  directory gone.
+- The TypeScript remains readable in git history — `git show
+  backup-before-scrub:nodejs/src/lib/joiner.ts` — and the Rust modules
+  still name their origin file in their `//!` headers. Those paths are
+  historical pointers, not live ones.

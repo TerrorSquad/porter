@@ -9,19 +9,11 @@ test.txt
 test_data/
 received/
 
-# Node.js workspace
-nodejs/node_modules/
-nodejs/dist/
-nodejs/test_data/
-
 # Editor / tooling
 .idea
 .vscode/tasks.json
 .vscode/launch.json
 .vscode/settings.json
-node_modules
-.pnpm-store
-.eslintcache
 .forge
 .qodo
 

@@ -4,17 +4,15 @@
 
 - Rust (stable) for the sender — `rust-sender/`.
 - Flutter (stable channel) for the receiver app.
-- Node + pnpm (versions pinned in `mise.toml` — `mise install` if you use
-  mise) for the repo-wide JS tooling (prettier, eslint, markdownlint),
-  which lives in `nodejs/`. The `nodejs/` package itself is **deprecated
-  and fully superseded** by `rust-sender/` — see `docs/adr/0006-*.md`.
+
+That is the whole list. There is no JavaScript in this repo — the Node
+package and its toolchain were removed in `docs/adr/0006-*.md`.
 
 ## Getting started
 
 ```bash
 cd rust-sender && cargo build --release
 cd flutter && flutter pub get
-pnpm install               # nodejs/ workspace deps + repo JS tooling
 ```
 
 Sending: `mise run rust-send <file>` or
@@ -32,26 +30,20 @@ cargo fmt --check
 # flutter/
 flutter test
 flutter analyze
-
-# nodejs/ (deprecated — only if you touched join)
-cd nodejs && pnpm test
-
-# lint/format the whole repo (tooling lives in nodejs/)
-mise run node-lint
 ```
 
-Or via `mise run rust-check` / `mise run rust-test` from the root. No
-pre-commit/pre-push hooks are wired up today — run these by hand for
-whichever side you touched.
+Or via `mise run rust-check` / `mise run rust-test` from the root.
+
+A `forge` pre-commit hook runs `cargo fmt` and `dart format` on staged
+changes (`mise run hooks-install` to set it up). Everything else — tests,
+clippy, `flutter analyze` — is on you to run for whichever side you
+touched.
 
 ## Project structure
 
 - `rust-sender/` — the active sender: QR-slideshow TUI + `porter serve`
   (`src/main.rs`, `src/tui.rs`, `src/serve.rs`, etc.). See
   [`rust-sender/README.md`](rust-sender/README.md).
-- `nodejs/` — original TypeScript sender CLI (`src/porter.ts` +
-  `src/lib/`). `serve`/`join` stay here indefinitely; the QR-display
-  sender code is superseded (see `docs/adr/0004-*.md`).
 - `flutter/` — receiver app. See
   [`flutter/docs/architecture.md`](flutter/docs/architecture.md).
 - `docs/adr/` — architecture decision records.
@@ -71,9 +63,7 @@ whichever side you touched.
 ## Tests
 
 - `rust-sender/src/**/*.rs` (`#[cfg(test)] mod tests`) — `cargo test`.
-- `nodejs/src/lib/*.test.ts` — node's built-in test runner (`pnpm test`).
 - `flutter/test/**` — `flutter test` (unit + widget).
 - Cross-language wire-format parity uses shared fixtures (e.g.
-  `flutter/test/fixtures/fountain_sample.json`, checked from Rust, Dart,
-  and originally TypeScript) rather than one language's suite driving
-  another.
+  `flutter/test/fixtures/fountain_sample.json`, checked from Rust and
+  Dart) rather than one language's suite driving another.

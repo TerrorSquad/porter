@@ -10,15 +10,17 @@ reassembles them. No network, no cloud — the QR codes are the wire.
 
 ## Package manager
 
-`nodejs/` uses **pnpm** (`pnpm-workspace.yaml`, `pnpm-lock.yaml`). Never
-`npm` or `yarn`. `rust-sender/` uses `cargo`. Tool versions pinned in
-`mise.toml`.
+`rust-sender/` uses `cargo`; `flutter/` uses `pub`. There is **no
+JavaScript in this repo** — no `package.json`, no `node_modules`, no
+pnpm/npm/yarn. Don't add one back without a decision to match: the Node
+package and its prettier/eslint/markdownlint toolchain were deleted
+outright (ADR-0006), and release-please now tracks `version.txt`
+(`release-type: simple`) rather than a manifest version.
 
-All JS tooling — `package.json`, prettier, eslint, markdownlint — lives in
-`nodejs/`, not the root. Prettier and markdownlint still cover the whole
-repo via `../` globs in their configs; run them with `mise run node-lint`
-or `pnpm --dir nodejs exec <tool>`. The root keeps no `package.json`;
-release-please tracks `version.txt` (`release-type: simple`).
+Formatting is per-language and self-contained: `cargo fmt` for Rust,
+`dart format` for Dart, `.editorconfig` for everything else (JSON, YAML,
+Markdown). Nothing formats Markdown automatically anymore — that is
+intentional, not an oversight.
 
 ## Sender (`rust-sender/`)
 
@@ -28,15 +30,14 @@ Node.js runtime needed. See `docs/adr/0004-*.md` for why it replaced the
 TypeScript sender. `cargo test` / `cargo clippy --all-targets` / `cargo
 fmt --check` from `rust-sender/`; `mise run rust-*` tasks from the root.
 
-## Sender, legacy (`nodejs/`) — DEPRECATED, FULLY SUPERSEDED
+## Sender, legacy (`nodejs/`) — DELETED
 
-TypeScript CLI (`porter.ts`), built with Rollup to a standalone `.mjs`.
-Deprecated and not covered by CI. Every feature is now in Rust: the
-sender, `porter serve` (`serve.rs`) and `porter join` (`join.rs`, see
-ADR-0006). Nothing here is the only implementation of anything anymore —
-it is kept as a reference only, and the sender path prints a deprecation
-warning at startup. Don't build new work here; change `rust-sender/`.
-`pnpm test` (node's `--test` runner) from `nodejs/`.
+The TypeScript implementation is gone (ADR-0006). Every feature it had is
+in `rust-sender/`: the sender, `porter serve` (`serve.rs`) and `porter
+join` (`join.rs`). Rust source files still cite `nodejs/src/...` paths in
+their `//!` headers as the origin of each port — those are historical
+references, readable via `git show backup-before-scrub:nodejs/...`, not
+live paths. Don't recreate the directory.
 
 ## Receiver (`flutter/`)
 
@@ -60,7 +61,6 @@ implementations — see `docs/adr/0002-*.md` and `docs/adr/0004-*.md`.
 - Flutter: `flutter test` (unit + widget), `flutter analyze` (lint/type
   check). No golden-image tests today.
 - Rust: `cargo test` (includes cross-language fixture parity tests).
-- Node.js: `pnpm test` (node's built-in test runner over `src/lib/*.test.ts`).
 - Cross-language wire-format parity is verified via shared fixtures (e.g.
   `flutter/test/fixtures/fountain_sample.json`), not by running one
   language's tests against another.

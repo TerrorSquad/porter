@@ -12,8 +12,10 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 2
 
-# Matches Prettier's tabWidth (prettier.config.mjs)
-[*.{js,jsx,ts,tsx,mjs,cjs,json,md,yml,yaml}]
+# Markup/config files. Since prettier was removed with nodejs/ (ADR-0006),
+# this is now the only thing setting their indentation -- editors honour it
+# directly rather than deferring to a formatter.
+[*.{json,md,yml,yaml}]
 indent_size = 2
 
 # rustfmt / dart format own their own formatting; indent_size here is a
@@ -28,7 +30,7 @@ indent_size = 2
 trim_trailing_whitespace = true
 
 # Ignore compiled/binary/vendored content
-[{node_modules,dist,build,target,vendor}/**]
+[{build,target,vendor}/**]
 charset = binary
 insert_final_newline = false
 trim_trailing_whitespace = false

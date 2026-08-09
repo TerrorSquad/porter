@@ -1,48 +1,31 @@
 # Migrated from .git-hooks.config.json
 # Review and adjust as needed.
 #
-# The JS toolchain lives in nodejs/ (deprecated package, see ADR-0004), so
-# every node tool runs from there via `pnpm --dir nodejs exec`. Prettier and
-# markdownlint still cover the whole repo: their configs use ../ globs, which
-# only resolve correctly with nodejs/ as the working directory.
+# No JS tooling here: the Node package and its prettier/eslint/markdownlint
+# toolchain were deleted along with nodejs/ (ADR-0006). Rust and Dart each
+# ship their own formatter, so the hooks call those directly and nothing
+# needs node_modules to exist.
 #
-# pass_files = false everywhere: the hook would otherwise hand these tools
-# repo-root-relative paths, which do not resolve once the tool has chdir'd
-# into nodejs/. Each tool instead runs whole-project off its own config.
+# pass_files = false: both formatters take a manifest/directory rather than
+# the staged-path list the hook would otherwise pass.
 
 [hooks.pre-commit]
 enabled = true
 
-[hooks.pre-commit.tools.eslint]
-command = "pnpm"
-args = ["--dir", "nodejs", "exec", "eslint", "--fix", "--cache", "--no-warn-ignored", "."]
-type = "node"
-group = "lint"
-extensions = [".js", ".jsx", ".ts", ".tsx", ".vue", ".mjs", ".cjs"]
-pass_files = false
-restage = true
-
-[hooks.pre-commit.tools.prettier]
-command = "pnpm"
-args = ["--dir", "nodejs", "exec", "prettier", "--write", "--ignore-unknown", "--cache", ".."]
-type = "node"
+[hooks.pre-commit.tools.rustfmt]
+command = "cargo"
+args = ["fmt", "--manifest-path", "rust-sender/Cargo.toml"]
+type = "system"
 group = "format"
-extensions = [".js", ".jsx", ".ts", ".tsx", ".vue", ".mjs", ".cjs", ".json", ".md", ".yml", ".yaml", ".css", ".scss"]
+extensions = [".rs"]
 pass_files = false
 restage = true
 
-# [hooks.pre-commit.tools.typescript]
-# command = "tsc"
-# args = ["--noEmit", "--skipLibCheck"]
-# type = "node"
-# group = "lint"
-# extensions = [".ts", ".tsx"]
-# pass_files = false
-
-[hooks.pre-commit.tools.markdownlint]
-command = "pnpm"
-args = ["--dir", "nodejs", "exec", "markdownlint-cli2"]
-type = "node"
-group = "lint"
-extensions = [".md"]
+[hooks.pre-commit.tools.dartfmt]
+command = "dart"
+args = ["format", "flutter/lib", "flutter/test"]
+type = "system"
+group = "format"
+extensions = [".dart"]
 pass_files = false
+restage = true

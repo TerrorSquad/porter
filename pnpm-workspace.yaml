@@ -1,7 +1,0 @@
-packages:
-  - "nodejs"
-
-onlyBuiltDependencies:
-  - core-js
-  - protobufjs
-  - esbuild

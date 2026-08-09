@@ -91,10 +91,10 @@ today).
 
 - Sending no longer requires a Node.js runtime on the sending machine —
   `cargo build --release` produces a single static binary.
-- `nodejs/` doesn't disappear: `porter join` remains TypeScript and
-  un-ported. A future spec should decide its Rust port (if any) — likely
-  smaller in scope than `serve` was, since it's pure local file
-  concatenation/verification with no networking.
+- ~~`nodejs/` doesn't disappear: `porter join` remains TypeScript and
+  un-ported.~~ Superseded by [ADR-0006](0006-port-join-to-rust.md):
+  `join` was ported and `nodejs/` deleted outright, so this consequence
+  no longer holds.
 - `axum`/`tokio` are now dependencies of `porter-sender` even for the
   sender (non-`serve`) invocation path, since both subcommands share one
   binary — the sender's own code paths stay synchronous/blocking (no
