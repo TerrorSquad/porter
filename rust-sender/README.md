@@ -83,3 +83,4 @@ The fountain PRNG/degree table and wire format
 `CHECKSUM|T|id|sha256`) must stay bit-identical to the Dart receiver
 (`flutter/lib/services/fountain_codec.dart`) and the TypeScript sender —
 see [`docs/adr/0002-fountain-vs-sequential.md`](../docs/adr/0002-fountain-vs-sequential.md).
+
