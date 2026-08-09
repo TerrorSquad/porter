@@ -6,9 +6,9 @@ prod-readiness pass). Nothing here is committed yet — see "Uncommitted work".
 ## Immediate: the in-flight transfer
 
 Transfer `1e`: a ~115 MB file, fountain, **K = 70965, blockSize = 1617**,
-output dir `<output-dir>`.
+output dir: a local folder outside the repo (set in Settings).
 
-- `<output-dir>/1e/chunks/` holds **only uniformly 1617-byte blocks**
+- The transfer's `1e/chunks/` directory holds **only uniformly 1617-byte blocks**
   now — the 995 contaminated 2172-byte ones are gone, so the directory is
   clean and safe to resume against.
 - Disk and metadata are **in sync** (checked live: 3532 chunk files vs 3531
@@ -58,7 +58,7 @@ Suggested split into conventional commits (release-please parses these):
 ## Distribution / prod readiness
 
 - [ ] **Signing + notarization.** Currently ad-hoc signed, `TeamIdentifier=not
-    set`, so Gatekeeper blocks it on any other Mac. Needs a Developer ID
+  set`, so Gatekeeper blocks it on any other Mac. Needs a Developer ID
       cert, `codesign --options runtime`, then `xcrun notarytool submit` +
       `xcrun stapler staple`. Requires your Apple Developer account.
 - [ ] **Wire `macos/strip_x86_64.sh` into Xcode** as a Run Script build phase.
@@ -136,8 +136,8 @@ several are deliberately argued against.
 
 - [ ] **Preflight screen before a transfer starts.** The receiver knows K,
       blockSize and fileSize from the first symbol. Show a one-time card:
-      "115 MB · 70965 blocks · ~2 h at the current rate · output →
-      <output-dir>" with Start / Change folder. Every wasted run today
+      "115 MB · 70965 blocks · ~2 h at the current rate · output → <dir>"
+      with Start / Change folder. Every wasted run today
       came from a wrong assumption that was knowable up front (wrong output
       dir, unrealistic duration, contaminated directory).
 - [ ] **Surface the layout-conflict and archive events in the UI.** The
@@ -146,8 +146,9 @@ several are deliberately argued against.
       banner: "Sender layout changed (K 70965 → 60000). Earlier blocks kept in
       chunks*superseded*\*."
 - [ ] **Show the resolved output directory on the scanning screen.** One line
-      of text would have prevented the `<output-dir>` vs `<output-dir>`
-      mistake entirely.
+      of text would have prevented a wrong-output-directory mistake that cost
+      a full restart (the configured path did not exist, so the app silently
+      resolved elsewhere and began from block 1).
 - [ ] **"Sender too slow" as an actionable hint, with the number.** The HUD
       says "could go faster ⚡" but not what to do. It has
       `estimatedSenderIntervalMs`; it could say "sender at 195 ms/frame — try
@@ -218,7 +219,7 @@ a **portfolio entry**, which is a different job: audience, not reference.
 - [x] **Portfolio entry written**:
       `~/Projects/vue3/nuxt3-portfolio/content/projects/porter.md`, matching
       the existing schema (validated against `content.config.ts`), `order:
-    1.2` to sit just after forge. No `docs:` link yet — add one if a site
+  1.2` to sit just after forge. No `docs:` link yet — add one if a site
       ever ships. Frontmatter omits `image:` because
       `public/projects/porter.webp` does not exist; **a screenshot or short
       GIF of a live transfer is the single highest-value addition** — this
