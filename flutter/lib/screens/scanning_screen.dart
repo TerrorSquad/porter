@@ -434,9 +434,21 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
                   children: [
                     // Progress
                     if (transfer != null) ...[
-                      LinearProgressIndicator(
-                        value: transfer.displayProgress,
-                        minHeight: 8,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: transfer.displayProgress,
+                          minHeight: 8,
+                          // The default track is a translucent tint of the
+                          // same green as the fill, which on the dark chrome
+                          // left the two nearly indistinguishable — a mostly
+                          // empty bar read as a nearly full one. An explicit
+                          // dark track makes the boundary obvious.
+                          backgroundColor: Colors.white12,
+                          valueColor: AlwaysStoppedAnimation(
+                            Colors.greenAccent.shade400,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -446,7 +458,14 @@ class _ScanningScreenState extends State<ScanningScreen> with WidgetsBindingObse
                       if (transfer.isFountain && !transfer.isComplete) ...[
                         const SizedBox(height: 4),
                         Text(
-                          'Fountain: keep scanning — blocks decode in a burst near the end',
+                          fountainHint(
+                            symbols: transfer.fountainSymbols,
+                            symbolsNeeded: transfer.fountainSymbolsNeeded,
+                            blocks: transfer.seenIndices.length,
+                            totalBlocks: transfer.total,
+                            newPerSecond: provider.newPerSecond,
+                          ),
+                          textAlign: TextAlign.center,
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall

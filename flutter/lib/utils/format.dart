@@ -21,9 +21,53 @@ String formatDuration(Duration d) {
     final tenths = (d.inMilliseconds % 1000) ~/ 100;
     return '${d.inSeconds}.${tenths}s';
   }
-  final minutes = d.inMinutes;
-  final seconds = d.inSeconds % 60;
-  return '${minutes}m ${seconds.toString().padLeft(2, '0')}s';
+  if (d.inHours < 1) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '${minutes}m ${seconds.toString().padLeft(2, '0')}s';
+  }
+  // Large transfers run for hours; "196m 00s" is unreadable next to "3h 16m".
+  return '${d.inHours}h ${(d.inMinutes % 60).toString().padLeft(2, '0')}m';
+}
+
+/// Rounds a duration to a coarse, honest-looking ETA — "~2h 30m", not
+/// "2h 27m 13s". The underlying rate estimate is noisy enough that extra
+/// precision would be false confidence.
+String formatEta(Duration d) {
+  if (d.inMinutes < 1) return 'under a minute';
+  if (d.inHours < 1) return '~${d.inMinutes} min';
+  final halves = (d.inMinutes / 30).round() * 30;
+  return '~${halves ~/ 60}h ${(halves % 60).toString().padLeft(2, '0')}m';
+}
+
+/// Explains what a fountain transfer is doing right now, and how much longer
+/// it needs, given the current rate of *new* symbols per second.
+///
+/// A single static "keep scanning" line was the old behaviour, and it read
+/// identically at 5% and 95% — with blocks pinned near zero for most of the
+/// run, that made a healthy transfer indistinguishable from a hung one.
+String fountainHint({
+  required int symbols,
+  required int symbolsNeeded,
+  required int blocks,
+  required int totalBlocks,
+  required double newPerSecond,
+}) {
+  if (symbols >= symbolsNeeded && blocks < totalBlocks) {
+    return 'Decoding — blocks are being recovered now, keep the codes in view';
+  }
+
+  final remaining = symbolsNeeded - symbols;
+  if (remaining <= 0) return 'Collecting the last few symbols…';
+
+  final pct = (symbols / symbolsNeeded * 100).clamp(0, 99).toStringAsFixed(0);
+  if (newPerSecond <= 0) {
+    return 'Collecting symbols: $pct% — blocks stay near 0 until the end';
+  }
+
+  final eta = formatEta(Duration(seconds: (remaining / newPerSecond).round()));
+  return 'Collecting symbols: $pct% · $eta left — '
+      'blocks stay near 0 until the end';
 }
 
 /// Condenses a sorted list of chunk indices into comma-separated ranges,

@@ -209,7 +209,21 @@ class _TransferCardState extends State<TransferCard> {
             ),
             const SizedBox(height: 8),
             if (transfer.total > 0) ...[
-              LinearProgressIndicator(value: transfer.displayProgress),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: transfer.displayProgress,
+                  minHeight: 6,
+                  // Matches the scanning screen: the default track is a tint
+                  // of the fill colour and disappears against it.
+                  backgroundColor: Colors.white12,
+                  valueColor: AlwaysStoppedAnimation(
+                    transfer.isComplete
+                        ? Colors.greenAccent.shade400
+                        : Colors.lightBlueAccent.shade200,
+                  ),
+                ),
+              ),
               const SizedBox(height: 4),
               Row(
                 children: [

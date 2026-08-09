@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/camera_fps.dart';
 import '../models/camera_resolution.dart';
+import '../providers/scanner_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/file_handler.dart';
 import '../services/secure_bookmark.dart';
@@ -63,8 +64,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (path == null || !mounted) return;
 
     final settings = context.read<SettingsProvider>();
+    final scanner = context.read<ScannerProvider>();
     final bookmark = await SecureBookmark.create(path);
     await settings.setOutputDirectory(path, bookmark: bookmark);
+
+    // Re-scan the new location for resumable transfers. Hydration otherwise
+    // only runs once at startup, so pointing the app at a directory that
+    // already holds a partial transfer silently ignored it: a real run
+    // rebuilt from 30 blocks while 2879 sat on disk unread.
+    await scanner.hydrateFromDisk(path);
   }
 
   Future<void> _openOutputDirectory() async {
@@ -122,9 +130,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SizedBox(width: 8),
                       if (settings.outputDirectory != null)
                         TextButton(
-                          onPressed: () => context
-                              .read<SettingsProvider>()
-                              .setOutputDirectory(null),
+                          onPressed: () {
+                            // Both providers are read before the await, so
+                            // no BuildContext crosses the async gap.
+                            final settingsProvider =
+                                context.read<SettingsProvider>();
+                            final scannerProvider =
+                                context.read<ScannerProvider>();
+                            settingsProvider.setOutputDirectory(null).then(
+                                  (_) => scannerProvider.hydrateFromDisk(null),
+                                );
+                          },
                           child: const Text('Reset to default'),
                         ),
                     ],

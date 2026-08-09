@@ -70,6 +70,22 @@ class ScannerProvider extends ChangeNotifier {
     return _recentScans.length / _rateWindow.inSeconds;
   }
 
+  /// *New* (non-duplicate) chunks per second, averaged over [_newRateWindow].
+  ///
+  /// Distinct from [scansPerSecond], which counts every decode attempt —
+  /// duplicates included. Only new chunks advance a transfer, so this is the
+  /// rate an ETA must be based on: at a 55% duplicate rate the raw scan rate
+  /// overstates progress by more than 2x. Windowed over 30s rather than 3s
+  /// because new arrivals are much sparser than raw scans.
+  static const _newRateWindow = Duration(seconds: 30);
+  final List<DateTime> _recentNewForRate = [];
+
+  double get newPerSecond {
+    final now = DateTime.now();
+    _recentNewForRate.removeWhere((t) => now.difference(t) > _newRateWindow);
+    return _recentNewForRate.length / _newRateWindow.inSeconds;
+  }
+
   /// Payload bytes received per second, averaged over the last [_rateWindow].
   double get bytesPerSecond {
     final now = DateTime.now();
@@ -188,6 +204,7 @@ class ScannerProvider extends ChangeNotifier {
         if (isNew) {
           totalScanned++;
           _recentNewChunks.add(DateTime.now());
+          _recentNewForRate.add(DateTime.now());
           if (_recentNewChunks.length > _senderIntervalSampleSize) {
             _recentNewChunks.removeAt(0);
           }
@@ -230,6 +247,7 @@ class ScannerProvider extends ChangeNotifier {
     _recentScans.clear();
     _recentBytes.clear();
     _recentNewChunks.clear();
+    _recentNewForRate.clear();
     notifyListeners();
   }
 
