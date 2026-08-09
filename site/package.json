@@ -1,0 +1,20 @@
+{
+  "name": "porter-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Docs site for Porter, deployed to Cloudflare Pages.",
+  "scripts": {
+    "build": "nuxi build",
+    "dev": "nuxi dev",
+    "generate": "nuxi generate",
+    "postinstall": "nuxi prepare",
+    "preview": "nuxi preview"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "1.2.121",
+    "@iconify-json/simple-icons": "1.2.93",
+    "docus": "^5.12.3",
+    "nuxt": "^4.5.1",
+    "shiki": "^4.4.1"
+  }
+}

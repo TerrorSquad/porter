@@ -1,0 +1,6 @@
+# Scoped to site/ only. The repo root deliberately pins no Node toolchain
+# (ADR-0006 deleted all JavaScript); the docs site is the one exception, and it
+# keeps its toolchain inside its own directory.
+[tools]
+node = "26"
+pnpm = "11"

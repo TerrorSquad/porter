@@ -1,0 +1,88 @@
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@theme static {
+  --color-brand-50: #ecfdf3;
+  --color-brand-100: #d1fae0;
+  --color-brand-200: #a7f3c6;
+  --color-brand-300: #6ee7a5;
+  --color-brand-400: #34d97e;
+  --color-brand-500: #12b95f;
+  --color-brand-600: #06954b;
+  --color-brand-700: #04763e;
+  --color-brand-800: #075e34;
+  --color-brand-900: #074d2c;
+  --color-brand-950: #012b17;
+}
+
+h1,
+h2,
+h3,
+.font-heading {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+}
+
+:root {
+  --ui-radius: 0.375rem;
+  --ui-bg: #fafafa;
+  --ui-bg-elevated: #ffffff;
+  --ui-bg-muted: #f4f4f5;
+  --ui-border: #e4e4e7;
+}
+
+/* -500 fails AA on white; -700 is 5.1:1. Light mode only. */
+:root:not(.dark) {
+  --ui-text-dimmed: var(--ui-color-neutral-600);
+  --ui-text-muted: var(--ui-color-neutral-600);
+
+  .text-primary {
+    color: var(--ui-color-primary-700);
+  }
+
+  :is(button, a).bg-primary {
+    background-color: var(--ui-color-primary-700);
+  }
+}
+
+.dark {
+  --ui-bg: #09090b;
+  --ui-bg-elevated: #131316;
+  --ui-bg-muted: #18181b;
+  --ui-border: var(--ui-color-neutral-700);
+  --ui-text-dimmed: var(--ui-color-neutral-300);
+  --ui-text-muted: var(--ui-color-neutral-300);
+}
+
+.grid-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(
+    ellipse 55% 45% at 12% 0%,
+    color-mix(in oklch, var(--ui-color-primary-500) 16%, transparent),
+    transparent 70%
+  );
+}
+
+/* QR-module checker. A conic-gradient rather than an SVG so it inherits the
+   theme border colour and needs no separate light/dark asset. */
+.grid-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: conic-gradient(
+    var(--ui-border) 0 25%,
+    transparent 0 50%,
+    var(--ui-border) 0 75%,
+    transparent 0
+  );
+  background-size: 16px 16px;
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(ellipse 75% 60% at 50% 0%, #000 35%, transparent 100%);
+  mask-image: radial-gradient(ellipse 75% 60% at 50% 0%, #000 35%, transparent 100%);
+}
