@@ -32,6 +32,11 @@ use tui::{App, InputMode, RenderOptions};
 const SYNC_BEGIN: &[u8] = b"\x1b[?2026h";
 const SYNC_END: &[u8] = b"\x1b[?2026l";
 
+/// Upper bound on codes per frame, for `--multi=auto` and the `]` key alike.
+/// Not a layout limit -- `effective_multi_qr` clamps to what fits -- just a
+/// sane ceiling so a held-down key can't run the request count away.
+const MAX_MULTI_QR: u32 = 64;
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match cli::parse(&args) {
@@ -306,8 +311,14 @@ fn run_sender(send_args: SendArgs) {
 
     let (_term_cols, term_rows) = terminal::size().unwrap_or((80, 24));
 
+    // `auto` requests the ceiling rather than a fixed guess: effective_multi_qr
+    // already walks the count down to whatever the terminal actually fits, so
+    // asking for the maximum makes "auto" mean "fill the space". The old
+    // constant 4 under-filled a wide, short window (a dropdown terminal fits
+    // several codes across but only one down) and over-asked on a small one --
+    // the fit check papered over the latter, never the former.
     let multi_qr = send_args.multi.as_ref().map(|m| match m {
-        MultiQr::Auto => 4,
+        MultiQr::Auto => MAX_MULTI_QR,
         MultiQr::Count(n) => *n,
     });
 
@@ -576,11 +587,14 @@ fn advance_slideshow(
         return;
     }
 
-    if app.index + 1 >= app.chunks.len() {
-        app.index = 0;
+    // move_next wraps, so a loop is simply "the index went backwards".
+    // Detecting it this way also counts a multi-QR pass that straddles the
+    // end (index 1550 + 8 codes -> 2) as one loop, which the old
+    // `index + 1 >= len` check missed entirely.
+    let before = app.index;
+    app.move_next(term_width, term_height);
+    if app.index <= before {
         app.loop_count += 1;
-    } else {
-        app.move_next(term_width, term_height);
     }
 }
 
@@ -687,6 +701,28 @@ fn handle_key(
         }
         KeyCode::Char('-') => {
             *speed += 0.05;
+        }
+        // Live `--multi` adjustment. The requested count is stored as-is and
+        // effective_multi_qr still decides what actually fits, so asking for
+        // more than the terminal can take is harmless -- the sidebar's (xN)
+        // shows what landed.
+        KeyCode::Char(']') => {
+            let current = app.options.multi_qr.unwrap_or(1);
+            app.options.multi_qr = Some((current + 1).min(MAX_MULTI_QR));
+            let fitted = app.effective_multi_qr(term_width, term_height);
+            app.status_message = Some(format!(
+                "Grid: {current} -> requested {}, showing {fitted}.",
+                current + 1
+            ));
+        }
+        KeyCode::Char('[') => {
+            let current = app.options.multi_qr.unwrap_or(1);
+            let next = current.saturating_sub(1).max(1);
+            app.options.multi_qr = Some(next);
+            let fitted = app.effective_multi_qr(term_width, term_height);
+            app.status_message = Some(format!(
+                "Grid: {current} -> requested {next}, showing {fitted}."
+            ));
         }
         KeyCode::Char('g') | KeyCode::Char('G') => {
             if gap_fill.is_some() {

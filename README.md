@@ -57,7 +57,9 @@ Offline Computer              Phone / Receiver
 ## 🚀 Features
 
 ✅ **Offline** — No internet, no cloud, no telemetry
-✅ **Fast** — chunks/sec depends on lighting and terminal size; `--multi` renders several QR codes per frame
+✅ **Fast** — chunks/sec depends on lighting and terminal size; `--multi` renders
+several QR codes per frame, and `--multi=auto` fills whatever the terminal has
+room for. `[` and `]` adjust the grid live.
 ✅ **Single binary** — the Rust sender needs no runtime installed on the sending machine
 ✅ **Reliable** — header protocol handles dropped/reordered chunks
 ✅ **Flexible** — works with any camera, terminal, phone OS

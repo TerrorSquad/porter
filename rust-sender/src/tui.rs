@@ -84,6 +84,9 @@ impl App {
         }
     }
 
+    /// Scrub by `step` frames, clamped to the ends. Used by `Shift+←/→`,
+    /// where overshooting to the far end is the point and wrapping would be
+    /// disorienting -- plain next/prev wrap instead (see `move_next`).
     pub fn move_by(&mut self, step: i32) {
         if step >= 0 {
             self.index = (self.index + step as usize).min(self.chunks.len().saturating_sub(1));
@@ -92,14 +95,31 @@ impl App {
         }
     }
 
+    /// Step `n` frames with wraparound, where `n` is however many codes are
+    /// on screen. Clamping here left `→` dead at the last chunk with no way
+    /// back to the first: the slideshow wraps (see `advance_slideshow`), so
+    /// manual stepping wrapping too is what the user already expects.
+    fn move_wrapping(&mut self, step: usize, forward: bool) {
+        let len = self.chunks.len();
+        if len == 0 {
+            return;
+        }
+        let step = step.max(1) % len.max(1);
+        self.index = if forward {
+            (self.index + step) % len
+        } else {
+            (self.index + len - step) % len
+        };
+    }
+
     pub fn move_next(&mut self, term_width: u16, term_height: u16) {
-        let step = self.effective_multi_qr(term_width, term_height) as i32;
-        self.move_by(step);
+        let step = self.effective_multi_qr(term_width, term_height) as usize;
+        self.move_wrapping(step, true);
     }
 
     pub fn move_prev(&mut self, term_width: u16, term_height: u16) {
-        let step = self.effective_multi_qr(term_width, term_height) as i32;
-        self.move_by(-step);
+        let step = self.effective_multi_qr(term_width, term_height) as usize;
+        self.move_wrapping(step, false);
     }
 
     fn qr_column_width(&self) -> u16 {
@@ -145,12 +165,18 @@ impl App {
         (cols, rows, width, height)
     }
 
+    /// How many codes actually fit, given the *terminal* size. The bottom row
+    /// is always the status line, so it's subtracted here rather than by each
+    /// caller -- when only `render` did it, the navigation step (`move_next`)
+    /// could disagree with the number of codes on screen and skip or repeat a
+    /// frame at the size boundary.
     pub fn effective_multi_qr(&self, term_width: u16, term_height: u16) -> u32 {
+        let grid_height = term_height.saturating_sub(1);
         let configured = self.options.multi_qr.unwrap_or(1);
         let mut n = configured;
         while n > 1 {
             let (_, _, width, height) = self.grid_dimensions_for(n, term_width);
-            if width <= term_width && height <= term_height {
+            if width <= term_width && height <= grid_height {
                 return n;
             }
             n -= 1;
@@ -236,7 +262,11 @@ impl Widget for SidebarWidget<'_> {
         } else {
             String::new()
         };
-        let end_chunk = (self.app.index + self.codes_rendered).min(self.app.chunks.len());
+        // The grid wraps past the end of the pool, so the range can too --
+        // show it as `1550–8` rather than pretending it stopped at the last
+        // chunk.
+        let len = self.app.chunks.len().max(1);
+        let end_chunk = (self.app.index + self.codes_rendered - 1) % len + 1;
         let chunk_range = if self.codes_rendered > 1 {
             format!("{}–{}", self.app.index + 1, end_chunk)
         } else {
@@ -281,6 +311,7 @@ impl Widget for SidebarWidget<'_> {
             Line::from("   Scrub: [Shift+←→]"),
             Line::from("   Jump:  [J]  Gap-fill: [G]"),
             Line::from("   Speed: [+]/[-]"),
+            Line::from("   Grid:  [[]/[]]"),
             Line::from("   Info:  [I]  Auto: [S]"),
             Line::from("   Quit:  [Q]"),
         ];
@@ -413,15 +444,22 @@ pub fn render(frame: &mut Frame, app: &App) {
         return;
     }
 
+    // effective_multi_qr subtracts the status row itself, so pass the full
+    // area height -- fitting against the full height was overcommitting by
+    // exactly one row, which is what made 114x26 clip where 114x27 was fine.
     let multi_qr = app.effective_multi_qr(area.width, area.height);
-    let codes_to_render = (multi_qr as usize).min(app.chunks.len() - app.index);
+    let codes_to_render = (multi_qr as usize).min(app.chunks.len());
     // Same width bound the fitter used, so the renderer lays the codes out in
     // the grid that was actually chosen rather than a different one.
     let (cols, _rows, grid_width, grid_height) =
         app.grid_dimensions_for(codes_to_render as u32, area.width);
 
     let mut qr_data = Vec::with_capacity(codes_to_render);
-    for idx in app.index..app.index + codes_to_render {
+    for offset in 0..codes_to_render {
+        // Wrap, matching move_next: near the end of the pool the grid keeps
+        // showing `multi` codes by continuing from the start, rather than
+        // shrinking to a single code for the last frame.
+        let idx = (app.index + offset) % app.chunks.len();
         let payload = &app.chunks[idx];
         let lines = match build_qr_lines(payload, app.options.ecc_level, app.version) {
             Ok(lines) => lines,
@@ -557,11 +595,103 @@ mod grid_tests {
         assert_eq!((cols, rows), (1, 2));
     }
 
+    /// `→` at the last chunk used to clamp, leaving the user stuck with no
+    /// way back to chunk 1 -- the slideshow wrapped but manual stepping did
+    /// not.
+    #[test]
+    fn stepping_past_the_last_chunk_wraps_to_the_first() {
+        let mut app = app_at_version(2);
+        app.options.multi_qr = Some(1);
+        let last = app.chunks.len() - 1;
+        app.index = last;
+        app.move_next(80, 40);
+        assert_eq!(app.index, 0, "next at the last chunk should wrap to first");
+        app.move_prev(80, 40);
+        assert_eq!(
+            app.index, last,
+            "prev at the first chunk should wrap to last"
+        );
+    }
+
+    /// Shift-scrub is deliberately still clamped: overshooting to the far end
+    /// is the point, and wrapping there would be disorienting.
+    #[test]
+    fn shift_scrub_still_clamps_at_the_ends() {
+        let mut app = app_at_version(2);
+        app.move_by(100);
+        assert_eq!(app.index, app.chunks.len() - 1);
+        app.move_by(-100);
+        assert_eq!(app.index, 0);
+    }
+
+    /// The bottom row is always the status line. Fitting the grid against the
+    /// full terminal height overcommitted by one row, so a terminal one row
+    /// short of comfortable picked a grid that then clipped.
+    #[test]
+    fn the_status_row_is_excluded_from_the_grid_height_budget() {
+        let app = app_at_version(10);
+        // One v10 code is 30 rows tall; 2 stacked need 61 with the gap.
+        let exactly_enough = app.qr_row_height() * 2 + GRID_GAP_Y;
+        // Narrow enough that 2 codes must stack rather than sit side by side.
+        let narrow = app.qr_column_width() + 1;
+        assert_eq!(
+            app.effective_multi_qr(narrow, exactly_enough),
+            1,
+            "no room once the status row is reserved"
+        );
+        assert_eq!(
+            app.effective_multi_qr(narrow, exactly_enough + 1),
+            2,
+            "one more row makes the stacked grid fit"
+        );
+    }
+
     #[test]
     fn a_wide_terminal_actually_gets_multiple_codes() {
         let app = app_at_version(34);
         // The old square-grid math returned 1 here, making --multi a no-op.
         assert_eq!(app.effective_multi_qr(400, 90), 2);
         assert_eq!(app.effective_multi_qr(200, 90), 1);
+    }
+}
+
+#[cfg(test)]
+mod dropdown_tests {
+    use super::*;
+
+    fn app_at(version: i32, requested: u32) -> App {
+        let mut app = App::new(
+            "f".to_string(),
+            RenderOptions {
+                speed: 0.2,
+                is_slideshow: false,
+                use_inverted: false,
+                ecc_level: EccLevel::L,
+                multi_qr: Some(requested),
+                no_info: true,
+            },
+        );
+        app.set_chunks(vec!["x".to_string(); 64], version);
+        app
+    }
+
+    /// `--multi=auto` used to ask for a fixed 4, which a wide terminal
+    /// under-fills: at version 6 a 218x56 grid area takes 4 across *and* 2
+    /// down. Asking for the ceiling instead lets the fit check use both axes.
+    #[test]
+    fn auto_fills_a_wide_terminal_in_two_dimensions() {
+        // 218 cols is the screenshot's ~250 minus the 32-col sidebar.
+        let old_request = app_at(6, 4).effective_multi_qr(218, 56);
+        let new_request = app_at(6, 64).effective_multi_qr(218, 56);
+        assert_eq!(old_request, 4, "the old fixed request only filled one row");
+        assert_eq!(new_request, 8, "asking for the ceiling fills 4x2");
+    }
+
+    /// The ceiling request must still collapse to 1 where nothing else fits,
+    /// or a small terminal would render a broken grid.
+    #[test]
+    fn auto_still_collapses_to_one_when_narrow() {
+        let app = app_at(20, 64);
+        assert_eq!(app.effective_multi_qr(90, 50), 1);
     }
 }
