@@ -14,4 +14,9 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT, not GITHUB_TOKEN: a release published by GITHUB_TOKEN does
+          # not trigger other workflows (GitHub's anti-recursion rule), so
+          # release.yml would never fire and every release would need a manual
+          # dispatch. Falls back to github.token, which still cuts the release
+          # PR and tag — only the downstream build has to be started by hand.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
