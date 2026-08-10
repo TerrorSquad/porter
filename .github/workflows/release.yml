@@ -89,7 +89,6 @@ jobs:
           class PorterSender < Formula
             desc "Air-gapped file transfer: sends a file as a QR slideshow in your terminal"
             homepage "https://porter.goranninkovic.com"
-            version "${VERSION}"
             license "MIT"
 
             on_macos do
