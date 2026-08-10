@@ -737,7 +737,23 @@ fn handle_key(
             app.input_mode = InputMode::JumpToChunk(String::new());
         }
         KeyCode::Char('i') | KeyCode::Char('I') => {
+            let before = app.effective_multi_qr(term_width, term_height);
             app.options.no_info = !app.options.no_info;
+            // Hiding the sidebar hands its columns back to the grid, which can
+            // fit another code straight away. Say so when it does -- otherwise
+            // the extra QR appears with no explanation. Only worth a message
+            // while the sidebar is on screen to read it, or when it just left.
+            let after = app.effective_multi_qr(term_width, term_height);
+            if after != before {
+                app.status_message = Some(format!(
+                    "Info {}: grid {before} -> {after}.",
+                    if app.options.no_info {
+                        "hidden"
+                    } else {
+                        "shown"
+                    }
+                ));
+            }
         }
         _ => {}
     }

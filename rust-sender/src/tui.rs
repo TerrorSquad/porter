@@ -730,6 +730,22 @@ mod dropdown_tests {
         assert_eq!(app.effective_multi_qr(180, 57), 2);
     }
 
+    /// `I` flips `no_info` mid-session, and the budget is recomputed per
+    /// frame -- so hiding the sidebar hands its 32 columns back to the grid
+    /// and a second code appears without a resize.
+    #[test]
+    fn hiding_the_sidebar_mid_session_frees_its_width() {
+        let mut app = app_at(17, 4);
+        app.options.no_info = false;
+        assert_eq!(app.effective_multi_qr(180, 57), 1);
+
+        app.options.no_info = true; // what pressing [I] does
+        assert_eq!(app.effective_multi_qr(180, 57), 2);
+
+        app.options.no_info = false; // and back again
+        assert_eq!(app.effective_multi_qr(180, 57), 1);
+    }
+
     /// The ceiling request must still collapse to 1 where nothing else fits,
     /// or a small terminal would render a broken grid.
     #[test]
