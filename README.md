@@ -100,7 +100,13 @@ mise run rust-build     # cargo build --release
 mise run rust-test       # cargo test
 mise run rust-check      # cargo clippy + cargo fmt --check
 mise run flutter-build   # flutter build macos --release
+mise run flutter-apk     # flutter build apk --release (universal)
+mise run flutter-apk-split  # one APK per ABI, ~1/3 the size
 ```
+
+Publishing the Android app — keystore, self-signing, and what to put in the
+release notes — is covered in
+[`docs/RELEASING-ANDROID.md`](docs/RELEASING-ANDROID.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites and conventions,
 and [`docs/adr/`](docs/adr/) for the architectural decisions behind the

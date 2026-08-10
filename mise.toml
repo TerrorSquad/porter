@@ -20,6 +20,19 @@ ARCHS=arm64 \
   sh macos/strip_x86_64.sh
 """
 
+[tasks.flutter-apk]
+dir = "flutter"
+# Universal APK — every ABI in one file. Bigger, but the safe download when
+# you don't know the target device. Falls back to the debug keystore unless
+# android/key.properties exists; see docs/RELEASING-ANDROID.md.
+run = "flutter build apk --release"
+
+[tasks.flutter-apk-split]
+dir = "flutter"
+# One APK per ABI, roughly a third the size each. These are what to attach to
+# a GitHub Release; virtually every real phone wants arm64-v8a.
+run = "flutter build apk --release --split-per-abi"
+
 [tasks.flutter-test]
 dir = "flutter"
 run = "flutter analyze && flutter test"
