@@ -128,7 +128,7 @@ features:
 ::u-page-section
 ---
 title: Honest limits, and an ISC licence
-description: QR is a slow, lossy, line-of-sight link, and no amount of coding changes that. A 109 MB file is roughly 26,000 chunks — a real transfer that has been run end to end, and also a long time holding a phone at a screen. Porter is for the case where two machines genuinely cannot talk: no NIC, an isolated network, a device you will not plug anything into.
+description: QR is a slow, lossy, line-of-sight link, and no amount of coding changes that. A 109 MB file is roughly 26,000 chunks — a real transfer that has been run end to end, and also a long time holding a phone at a screen. Porter is for the case where two machines genuinely cannot talk - no NIC, an isolated network, a device you will not plug anything into.
 links:
   - label: Read the docs
     to: /docs/getting-started/introduction
