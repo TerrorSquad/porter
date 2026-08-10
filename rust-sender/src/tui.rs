@@ -172,16 +172,37 @@ impl App {
     /// frame at the size boundary.
     pub fn effective_multi_qr(&self, term_width: u16, term_height: u16) -> u32 {
         let grid_height = term_height.saturating_sub(1);
+        let grid_width = self.grid_width_budget(term_width);
         let configured = self.options.multi_qr.unwrap_or(1);
         let mut n = configured;
         while n > 1 {
-            let (_, _, width, height) = self.grid_dimensions_for(n, term_width);
-            if width <= term_width && height <= grid_height {
+            let (_, _, width, height) = self.grid_dimensions_for(n, grid_width);
+            if width <= grid_width && height <= grid_height {
                 return n;
             }
             n -= 1;
         }
         1
+    }
+
+    /// Columns the QR grid can actually use. The sidebar is laid out beside
+    /// the grid whenever it fits, so fitting against the full terminal width
+    /// overcounts by `SIDEBAR_WIDTH + GRID_GAP_X` -- the fitter would approve
+    /// a second code that the renderer then had no room for, and the grid
+    /// silently fell back to one. Only subtract it while the sidebar would
+    /// still fit beside a single code; below that it moves under the grid (or
+    /// is hidden) and the full width really is available.
+    fn grid_width_budget(&self, term_width: u16) -> u16 {
+        if self.options.no_info {
+            return term_width;
+        }
+        let one_code = self.qr_column_width();
+        let reserved = SIDEBAR_WIDTH + GRID_GAP_X;
+        if one_code + reserved <= term_width {
+            term_width - reserved
+        } else {
+            term_width
+        }
     }
 }
 
@@ -452,7 +473,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     // Same width bound the fitter used, so the renderer lays the codes out in
     // the grid that was actually chosen rather than a different one.
     let (cols, _rows, grid_width, grid_height) =
-        app.grid_dimensions_for(codes_to_render as u32, area.width);
+        app.grid_dimensions_for(codes_to_render as u32, app.grid_width_budget(area.width));
 
     let mut qr_data = Vec::with_capacity(codes_to_render);
     for offset in 0..codes_to_render {
@@ -685,6 +706,28 @@ mod dropdown_tests {
         let new_request = app_at(6, 64).effective_multi_qr(218, 56);
         assert_eq!(old_request, 4, "the old fixed request only filled one row");
         assert_eq!(new_request, 8, "asking for the ceiling fills 4x2");
+    }
+
+    /// The fitter measured against the full terminal width while the renderer
+    /// only got what was left beside the sidebar, so between 180 and 211 cols
+    /// it approved a second code there was no room for and the grid silently
+    /// fell back to one.
+    #[test]
+    fn the_sidebar_is_excluded_from_the_grid_width_budget() {
+        let mut app = app_at(17, 4);
+        app.options.no_info = false; // sidebar shown, so it costs width
+        // Two v17 codes need 178 cols. At 180 the old code approved them
+        // against the full width, leaving the renderer only 146.
+        assert_eq!(app.effective_multi_qr(180, 57), 1);
+        // 212 leaves 178 beside the sidebar, so two genuinely fit.
+        assert_eq!(app.effective_multi_qr(212, 57), 2);
+    }
+
+    /// With `--no-info` there is no sidebar, so the full width is available.
+    #[test]
+    fn no_info_gets_the_whole_width() {
+        let app = app_at(17, 4); // helper already sets no_info
+        assert_eq!(app.effective_multi_qr(180, 57), 2);
     }
 
     /// The ceiling request must still collapse to 1 where nothing else fits,
