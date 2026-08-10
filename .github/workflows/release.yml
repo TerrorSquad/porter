@@ -138,7 +138,11 @@ jobs:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         run: |
           TAG="${{ inputs.tag || github.event.release.tag_name }}"
-          gh repo clone TerrorSquad/homebrew-tap tap -- --depth=1
+          # The token has to be in the remote URL: GH_TOKEN authenticates the
+          # `gh` CLI, but `git push` does not read it and would prompt for a
+          # username against a plain https remote.
+          git clone --depth=1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/TerrorSquad/homebrew-tap.git" tap
           cp porter-sender.rb tap/Formula/porter-sender.rb
           cd tap
           git config user.name "github-actions[bot]"
