@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/TerrorSquad/porter/compare/v1.0.0...v1.1.0) (2026-08-11)
+
+
+### Features
+
+* **rust-sender:** fill the terminal with --multi=auto and a live grid toggle ([ddd904c](https://github.com/TerrorSquad/porter/commit/ddd904c9afc5f75f1432b37b67947e1d0ea72e92))
+* **rust-sender:** report the grid change when [I] hides the sidebar ([a773738](https://github.com/TerrorSquad/porter/commit/a77373855f83395bfe625f1df15ca5bbad5ce13e))
+
+
+### Bug Fixes
+
+* **ci:** authenticate the tap push ([4200058](https://github.com/TerrorSquad/porter/commit/420005847284239bf7f0c4a14e8db14a1e80a794))
+* **ci:** drop the redundant version line from the formula ([703701b](https://github.com/TerrorSquad/porter/commit/703701bad2d9458de13ab09991900805b43ede75))
+* **rust-sender:** exclude the sidebar from the multi-QR width budget ([9fda0dc](https://github.com/TerrorSquad/porter/commit/9fda0dc47a59350ad637d413279e24607a175193))
+
 ## 1.0.0 (2026-08-10)
 
 
