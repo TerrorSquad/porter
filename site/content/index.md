@@ -44,10 +44,9 @@ fountain coding means the receiver never has to catch any particular frame.
 
 #default
 ```bash
-cd rust-sender
-cargo build --release
+brew install terrorsquad/tap/porter-sender
 
-./target/release/porter-sender myfile.pdf --fountain
+porter-sender myfile.pdf --fountain
 # Point the receiver app at the terminal. That's the whole protocol.
 ```
 ::

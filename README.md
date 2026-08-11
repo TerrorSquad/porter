@@ -1,5 +1,9 @@
 # Porter — Air-Gapped File Transfer via QR Codes
 
+[![Release](https://img.shields.io/github/v/release/TerrorSquad/porter?sort=semver)](https://github.com/TerrorSquad/porter/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-porter.goranninkovic.com-0EA5E9)](https://porter.goranninkovic.com)
+
 **Transfer files between computers without a network. Scan QR codes from a terminal with any device camera.**
 
 ```bash
@@ -22,6 +26,22 @@ runtime on the sending machine, which matters for an air-gapped tool. See
 
 ## 🚀 Quick Start
 
+Install the sender with Homebrew, then point it at a file:
+
+```bash
+brew install terrorsquad/tap/porter-sender
+porter-sender myfile.txt --slideshow
+```
+
+Pre-built binaries for macOS and Linux (arm64 + x86_64) are also on the
+[releases page](https://github.com/TerrorSquad/porter/releases).
+
+The receiver is the Flutter app — see [flutter/README.md](flutter/README.md)
+for install instructions.
+
+<details>
+<summary>Building from source instead</summary>
+
 ```bash
 cd rust-sender
 cargo build --release
@@ -30,6 +50,8 @@ cargo build --release
 
 Or with `mise` from the repo root: `mise run rust-install` builds and
 copies the binary to `~/.local/bin/porter-sender`.
+
+</details>
 
 **→ See [rust-sender/README.md](rust-sender/README.md) for the full sender
 docs (controls, `--fountain`, `porter serve`) and
@@ -127,7 +149,7 @@ This is a hobby project, but PRs welcome for:
 
 ## 📄 License
 
-ISC
+[MIT](LICENSE) © Goran Ninković
 
 ---
 
