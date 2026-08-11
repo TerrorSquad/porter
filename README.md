@@ -7,6 +7,8 @@ porter-sender myfile.txt
 # → Phone scans QR codes, file is reassembled locally
 ```
 
+![The Porter sender TUI: a QR frame beside live transfer stats](docs/screenshots/sender-tui.png)
+
 ## 📦 Components
 
 | Component                                   | Role                                                                              | Status                                                                                                    |
