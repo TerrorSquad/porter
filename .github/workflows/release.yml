@@ -70,6 +70,10 @@ jobs:
 
   formula:
     needs: build
+    # Stable tags only. A prerelease (v1.1.0-rc.1) would otherwise point the
+    # tap at assets that vanish when the RC is cleaned up, breaking
+    # `brew install` for everyone.
+    if: ${{ !contains(inputs.tag || github.event.release.tag_name, '-') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

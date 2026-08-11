@@ -7,16 +7,24 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write # to dispatch release.yml
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # GITHUB_TOKEN, no PAT — nothing to expire. A release it publishes does
+      # not trigger other workflows (GitHub's anti-recursion rule), so the
+      # step below starts release.yml explicitly rather than relying on the
+      # `release: published` event.
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
-          # A PAT, not GITHUB_TOKEN: a release published by GITHUB_TOKEN does
-          # not trigger other workflows (GitHub's anti-recursion rule), so
-          # release.yml would never fire and every release would need a manual
-          # dispatch. Falls back to github.token, which still cuts the release
-          # PR and tag — only the downstream build has to be started by hand.
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          token: ${{ github.token }}
+
+      - name: Cut the release
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" --field tag="$TAG"
